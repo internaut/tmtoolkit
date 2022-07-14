@@ -1285,7 +1285,11 @@ def dtm(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None, as_t
         return mat
 
 
-def ngrams(docs: Corpus, n: int, select: Optional[Union[str, Collection[str]]] = None, join: bool = True,
+def ngrams(docs: Corpus, n: int,
+           select: Optional[Union[str, Collection[str]]] = None,
+           sentences: bool = False,
+           tokens_as_hashes: bool = False,
+           join: bool = True,
            join_str: str = ' ') -> Dict[str, Union[List[str], str]]:
     """
     Generate and return n-grams of length `n`.
@@ -1293,6 +1297,9 @@ def ngrams(docs: Corpus, n: int, select: Optional[Union[str, Collection[str]]] =
     :param docs: a Corpus object
     :param n: length of n-grams, must be >= 2
     :param select: if not None, this can be a single string or a sequence of strings specifying a subset of `docs`
+    :param sentences: divide results into sentences; if True, each document will consist of a list of sentences which in
+                      turn contain a list or array of tokens
+    :param tokens_as_hashes: if True, return token type hashes (integers) instead of textual representations (strings)
     :param join: if True, join generated n-grams by string `join_str`
     :param join_str: string used for joining
     :return: dict mapping document label to document n-grams; if `join` is True, the list contains strings of
@@ -1302,13 +1309,20 @@ def ngrams(docs: Corpus, n: int, select: Optional[Union[str, Collection[str]]] =
     if n < 2:
         raise ValueError('`n` must be at least 2')
 
+    if tokens_as_hashes and join:
+        raise ValueError('if `tokens_as_hashes` is True, ngrams cannot be joined (`join` must be set to False)')
+
     @parallelexec(collect_fn=merge_dicts_sorted)
     def _ngrams(chunk):
-        return {lbl: token_ngrams(dtok, n, join=join, join_str=join_str) for lbl, dtok in chunk.items()}
+        if sentences:
+            return {lbl: [token_ngrams(sent, n, join=join, join_str=join_str) for sent in sents]
+                    for lbl, sents in chunk.items()}
+        else:
+            return {lbl: token_ngrams(dtok, n, join=join, join_str=join_str) for lbl, dtok in chunk.items()}
 
     select = _single_str_to_set(select)
     logger.debug('getting tokens')
-    tokens = doc_tokens(docs, select=select)
+    tokens = doc_tokens(docs, select=select, sentences=sentences, tokens_as_hashes=tokens_as_hashes)
     logger.debug(f'generating {n}-grams')
     return _ngrams(_paralleltask(docs, tokens=tokens))
 
