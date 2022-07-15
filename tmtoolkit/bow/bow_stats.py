@@ -1,5 +1,5 @@
 """
-Common statistics from bag-of-words (BoW) matrices.
+Common statistics for bag-of-words (BoW) or sparse word representation models.
 
 .. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
 """
