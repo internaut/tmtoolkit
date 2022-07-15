@@ -13,9 +13,6 @@ SENT_END = 11
 class NGramModel:
     def __init__(self, n):
         self.n = n
-        self.unigrams = []
-        self.ngrams = []
-        self.unigram_counts = Counter()
         self.ngram_counts = Counter()
         self.ngram_prob = {}  # np.array([], dtype=np.float_)
 
@@ -31,17 +28,21 @@ class NGramModel:
                     new_sents.append([])
             unigram_sents.extend(new_sents)
 
-        self.ngrams = []
-        for sent in unigram_sents:
-            self.ngrams.extend(token_ngrams(sent, n=self.n, join=False, ngram_container=tuple))
-
-        self.unigrams = flatten_list(unigram_sents)
-        self.unigram_counts = Counter(self.unigrams)
-        self.ngram_counts = Counter(self.ngrams)
+        self.ngram_counts = Counter()
+        for i in range(1, self.n+1):
+            ngrms_i = []
+            for sent in unigram_sents:
+                if i == 1:
+                    ngrms_i.extend(map(lambda x: (x, ), sent))
+                else:
+                    ngrms_i.extend(token_ngrams(sent, n=i, join=False, ngram_container=tuple))
+            self.ngram_counts.update(ngrms_i)
 
         # only works with bigrams so far:
         #self.ngram_prob = np.array([n/self.unigram_counts[ng[0]] for ng, n in self.ngram_counts.items()])
-        self.ngram_prob = {ng: n / self.unigram_counts[ng[0]] for ng, n in self.ngram_counts.items()}
+        #self.ngram_prob = {ng: n / self.unigram_counts[ng[0]] for ng, n in self.ngram_counts.items()}
+
+
 
 
 # corp = Corpus.from_builtin_corpus('en-parlspeech-v2-sample-houseofcommons', sample=10, max_workers=1.0)
