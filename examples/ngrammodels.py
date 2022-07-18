@@ -1,7 +1,17 @@
+"""
+N-gram models.
+
+TODO:
+
+  - make sure runs as unigram model, too (N = 1)
+
+"""
+
 import math
+import random
 from collections import Counter
 
-from tmtoolkit.corpus import Corpus, doc_tokens
+from tmtoolkit.corpus import doc_tokens
 from tmtoolkit.tokenseq import token_ngrams
 
 
@@ -49,6 +59,42 @@ class NGramModel:
 
             #assert 0 < p <= 1
             self.ngram_prob_[lookup] = p
+
+    def predict(self, given=None, until_n=None, until_token=SENT_END):
+        if given is None:
+            given = (SENT_START, ) * (self.n - 1)
+        else:
+            if isinstance(given, list):
+                given = tuple(given)
+            elif not isinstance(given, tuple):
+                given = (given,)
+
+            if len(given) > self.n - 1:
+                given = given[-(self.n - 1):]
+            elif len(given) < self.n - 1:
+                raise ValueError(f'for a {self.n}-gram model you must provide `given` with at least {self.n-1} tokens')
+
+        assert len(given) == self.n - 1
+
+        i = 0
+        while True:
+            probs = {tok_given[0]: math.exp(p) for tok_given, p in self.ngram_prob_.items()
+                     if isinstance(tok_given, tuple) and tok_given[1] == given}
+
+            if not probs:
+                break
+
+            x = random.choices(list(probs.keys()), list(probs.values()))[0]
+            given = given[1:] + (x, )
+            i += 1
+
+            yield x
+
+            if until_n is not None and i >= until_n:
+                break
+
+            if until_token is not None and x == until_token:
+                break
 
     def prob(self, x, given=None, log=True, pad_input=False):
         if isinstance(x, list):
@@ -110,33 +156,4 @@ class NGramModel:
                 return []
 
 
-
-
-# corp = Corpus.from_builtin_corpus('en-parlspeech-v2-sample-houseofcommons', sample=10, max_workers=1.0)
-# corp
-
-corp = Corpus({'d1': 'I am Sam', 'd2': 'Sam I am', 'd3': 'I do not like green eggs and ham'}, language='en')
-corp
-
-ngmodel = NGramModel(2)
-ngmodel.fit(corp)
-
-h = lambda x: corp.nlp.vocab.strings[x]
-hsent = lambda x: tuple(h(t) for t in x.split())
-
-#ngmodel.prob(h('I'), SENT_START, log=False)
-#ngmodel.prob(h('Sam'), h('am'), log=False)
-#ngmodel.prob(h('Sam'), hsent('I am'), log=False)
-ngmodel.prob(hsent('I am Sam'), log=False)
-
-
-ngmodel.ngram_prob_[corp.nlp.vocab.strings['I'], (SENT_START, )]
-ngmodel.ngram_prob_[SENT_END, (corp.nlp.vocab.strings['Sam'], )]
-ngmodel.ngram_prob_[corp.nlp.vocab.strings['Sam'], (SENT_START, )]
-ngmodel.ngram_prob_[corp.nlp.vocab.strings['Sam'], (corp.nlp.vocab.strings['am'], )]
-
-ngmodel.ngram_prob_[corp.nlp.vocab.strings['do'], (SENT_START, corp.nlp.vocab.strings['I'])]
-
-#ng_docs = ngrams(corp, n, tokens_as_hashes=True, sentences=True, join=False)
-#ng_docs = ngrams_augment_sents(ng_docs, n)
 
