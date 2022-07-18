@@ -215,7 +215,7 @@ def pmi(x: np.ndarray, y: np.ndarray, xy: np.ndarray, n_total: Optional[int] = N
         y = y/n_total
         xy = xy/n_total
 
-    pmi_val = logfn(xy) - logfn(x * y)
+    pmi_val = logfn(xy) - logfn(x) - logfn(y)
 
     if k > 1:
         return pmi_val - (1-k) * logfn(xy)
