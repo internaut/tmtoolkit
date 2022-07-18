@@ -1,8 +1,8 @@
+import math
 from collections import Counter
 
 from tmtoolkit.corpus import Corpus, doc_tokens
 from tmtoolkit.tokenseq import token_ngrams
-from tmtoolkit.utils import flatten_list
 
 
 OOV = 0
@@ -17,15 +17,11 @@ class NGramModel:
         self.ngram_prob_ = {}  # np.array([], dtype=np.float_)
 
     def fit(self, corp):
-        pad = self.n - 1
         unigram_sents = []
         for sents in doc_tokens(corp, tokens_as_hashes=True, sentences=True).values():
             new_sents = []
             for s in sents:
-                if s:
-                    new_sents.append([SENT_START] * pad + s + [SENT_END] * pad)
-                else:
-                    new_sents.append([])
+                new_sents.append(self.pad_sequence(s))
             unigram_sents.extend(new_sents)
 
         self.ngram_counts_ = Counter()
@@ -42,23 +38,76 @@ class NGramModel:
         n_unigrams = sum(c for ng, c in self.ngram_counts_.items() if len(ng) == 1)
         for ng, c in self.ngram_counts_.items():
             n = len(ng)
-            tok, given = ng[(n - 1):], ng[:(n - 1)]
-            assert len(tok) == 1
+            given = ng[:(n - 1)]
 
             if n == 1:
-                p = c / n_unigrams
-                lookup = tok[0]
+                p = math.log(c) - math.log(n_unigrams)
+                lookup = ng[-1]
             else:
-                p = c / self.ngram_counts_[given]
-                lookup = (tok[0], given)
+                p = math.log(c) - math.log(self.ngram_counts_[given])
+                lookup = (ng[-1], given)
 
-            assert 0 < p <= 1
+            #assert 0 < p <= 1
             self.ngram_prob_[lookup] = p
 
+    def prob(self, x, given=None, log=True, pad_input=False):
+        if isinstance(x, list):
+            x = tuple(x)
 
-        # only works with bigrams so far:
-        #self.ngram_prob = np.array([n/self.unigram_counts[ng[0]] for ng, n in self.ngram_counts.items()])
-        #self.ngram_prob = {ng: n / self.unigram_counts[ng[0]] for ng, n in self.ngram_counts.items()}
+        if isinstance(given, list):
+            given = tuple(given)
+        elif not isinstance(given, tuple) and given is not None:
+            given = (given,)
+
+        if isinstance(x, tuple):
+            if given is not None:
+                x = given + x
+            if pad_input:
+                x = self.pad_sequence(x)
+
+            x = token_ngrams(x, self.n, join=False, ngram_container=tuple)
+
+            p = 0 if log else 1
+            for ng in x:
+                given = ng[:(self.n - 1)]
+                log_p = self.ngram_prob_[(ng[-1], given)]
+                if log:
+                    p += log_p
+                else:
+                    p *= math.exp(log_p)
+            return p
+        else:
+            if given is None:
+                p = self.ngram_prob_[x]
+            else:
+                p = self.ngram_prob_[(x, given)]
+
+            if log:
+                return p
+            else:
+                return math.exp(p)
+
+    def pad_sequence(self, s):
+        if not isinstance(s, (tuple, list)):
+            raise ValueError('`s` must be tuple or list')
+
+        pad = self.n - 1
+
+        if s:
+            if isinstance(s, tuple):
+                s = list(s)
+
+            s_ = [SENT_START] * pad + s + [SENT_END] * pad
+
+            if isinstance(s, tuple):
+                return tuple(s_)
+            else:
+                return s_
+        else:
+            if isinstance(s, tuple):
+                return tuple()
+            else:
+                return []
 
 
 
@@ -72,11 +121,21 @@ corp
 ngmodel = NGramModel(2)
 ngmodel.fit(corp)
 
+h = lambda x: corp.nlp.vocab.strings[x]
+hsent = lambda x: tuple(h(t) for t in x.split())
+
+#ngmodel.prob(h('I'), SENT_START, log=False)
+#ngmodel.prob(h('Sam'), h('am'), log=False)
+#ngmodel.prob(h('Sam'), hsent('I am'), log=False)
+ngmodel.prob(hsent('I am Sam'), log=False)
+
 
 ngmodel.ngram_prob_[corp.nlp.vocab.strings['I'], (SENT_START, )]
 ngmodel.ngram_prob_[SENT_END, (corp.nlp.vocab.strings['Sam'], )]
 ngmodel.ngram_prob_[corp.nlp.vocab.strings['Sam'], (SENT_START, )]
 ngmodel.ngram_prob_[corp.nlp.vocab.strings['Sam'], (corp.nlp.vocab.strings['am'], )]
+
+ngmodel.ngram_prob_[corp.nlp.vocab.strings['do'], (SENT_START, corp.nlp.vocab.strings['I'])]
 
 #ng_docs = ngrams(corp, n, tokens_as_hashes=True, sentences=True, join=False)
 #ng_docs = ngrams_augment_sents(ng_docs, n)
