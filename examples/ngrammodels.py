@@ -60,26 +60,34 @@ class NGramModel:
             #assert 0 < p <= 1
             self.ngram_prob_[lookup] = p
 
-    def predict(self, given=None, until_n=None, until_token=SENT_END):
-        if given is None:
-            given = (SENT_START, ) * (self.n - 1)
+    def predict(self, given=None, return_prob=0):
+        """
+        TODO
+
+        :param given:
+        :param return_prob: 0 - don't return prob., 1 – return prob., 2 – return log prob.
+        :return:
+        """
+        given = self._prepare_given_param(given)
+        probs = self._probs_for_given(given)
+
+        if probs:
+            probs = sorted(probs.items(), key=lambda x: x[1], reverse=True)
+            if return_prob == 1:
+                return probs[0][0], math.exp(probs[0][1])
+            elif return_prob == 2:
+                return probs[0]
+            else:
+                return probs[0][0]
         else:
-            if isinstance(given, list):
-                given = tuple(given)
-            elif not isinstance(given, tuple):
-                given = (given,)
+            return None
 
-            if len(given) > self.n - 1:
-                given = given[-(self.n - 1):]
-            elif len(given) < self.n - 1:
-                raise ValueError(f'for a {self.n}-gram model you must provide `given` with at least {self.n-1} tokens')
-
-        assert len(given) == self.n - 1
+    def generate_sequence(self, given=None, until_n=None, until_token=SENT_END):
+        given = self._prepare_given_param(given)
 
         i = 0
         while True:
-            probs = {tok_given[0]: math.exp(p) for tok_given, p in self.ngram_prob_.items()
-                     if isinstance(tok_given, tuple) and tok_given[1] == given}
+            probs = self._probs_for_given(given)
 
             if not probs:
                 break
@@ -133,6 +141,11 @@ class NGramModel:
             else:
                 return math.exp(p)
 
+    def perplexity(self, x, pad_input=False):
+        log_p = self.prob(x, pad_input=pad_input)
+        n = sum(len(ng) == 1 for ng in self.ngram_counts_.keys()) - 1
+        return math.pow(math.exp(log_p), -1.0/n)
+
     def pad_sequence(self, s):
         if not isinstance(s, (tuple, list)):
             raise ValueError('`s` must be tuple or list')
@@ -155,5 +168,25 @@ class NGramModel:
             else:
                 return []
 
+    def _prepare_given_param(self, given):
+        if given is None:
+            given = (SENT_START, ) * (self.n - 1)
+        else:
+            if isinstance(given, list):
+                given = tuple(given)
+            elif not isinstance(given, tuple):
+                given = (given,)
 
+            if len(given) > self.n - 1:
+                given = given[-(self.n - 1):]
+            elif len(given) < self.n - 1:
+                raise ValueError(f'for a {self.n}-gram model you must provide `given` with at least {self.n-1} tokens')
+
+        assert len(given) == self.n - 1
+
+        return given
+
+    def _probs_for_given(self, given):
+        return {tok_given[0]: math.exp(p) for tok_given, p in self.ngram_prob_.items()
+                if isinstance(tok_given, tuple) and tok_given[1] == given}
 
