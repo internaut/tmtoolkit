@@ -4,6 +4,9 @@ N-gram models.
 TODO:
 
   - make sure runs as unigram model, too (N = 1)
+  - allow list of sentences as input to `fit`, too
+  - add simple translation function between string and hash sequences
+  - add __str__ and __repr__ methods
 
 """
 
@@ -21,14 +24,18 @@ SENT_END = 11
 
 
 class NGramModel:
-    def __init__(self, n):
+    def __init__(self, n, add_k_smoothing=1.0):
         self.n = n
+        self.k = add_k_smoothing
+        self.vocab_size_ = 0
+        self.n_unigrams_ = 0
         self.ngram_counts_ = Counter()
-        self.ngram_prob_ = {}  # np.array([], dtype=np.float_)
+        self.unigram_counts_ = {}
+        #self.ngram_prob_ = {}  # np.array([], dtype=np.float_)
 
-    def fit(self, corp):
+    def fit(self, corp, tokens_as_hashes=True):
         unigram_sents = []
-        for sents in doc_tokens(corp, tokens_as_hashes=True, sentences=True).values():
+        for sents in doc_tokens(corp, tokens_as_hashes=tokens_as_hashes, sentences=True).values():
             new_sents = []
             for s in sents:
                 new_sents.append(self.pad_sequence(s))
@@ -44,38 +51,26 @@ class NGramModel:
                     ngrms_i.extend(token_ngrams(sent, n=i, join=False, ngram_container=tuple))
             self.ngram_counts_.update(ngrms_i)
 
-        self.ngram_prob_ = {}
-        n_unigrams = sum(c for ng, c in self.ngram_counts_.items() if len(ng) == 1)
-        for ng, c in self.ngram_counts_.items():
-            n = len(ng)
-            given = ng[:(n - 1)]
-
-            if n == 1:
-                p = math.log(c) - math.log(n_unigrams)
-                lookup = ng[-1]
-            else:
-                p = math.log(c) - math.log(self.ngram_counts_[given])
-                lookup = (ng[-1], given)
-
-            #assert 0 < p <= 1
-            self.ngram_prob_[lookup] = p
+        self.unigram_counts_ = [c for ng, c in self.ngram_counts_.items() if len(ng) == 1]
+        self.vocab_size_ = len(self.unigram_counts_)
+        self.n_unigrams_ = sum(self.unigram_counts_)
 
     def predict(self, given=None, return_prob=0):
         """
-        TODO
+        Predict the most likely next token given a sequence of tokens `given`. If `given` is None, assume a sentence
+        start.
 
-        :param given:
+        :param given: given sequence of tokens; if None, assume a sentence start
         :param return_prob: 0 - don't return prob., 1 – return prob., 2 – return log prob.
-        :return:
+        :return: if `return_prob` is 0, return the most likely next token; if `return_prob` is not zero, return a
+                 2-tuple with ``(must likely token, predition probability)``
         """
         given = self._prepare_given_param(given)
-        probs = self._probs_for_given(given)
+        probs = self._probs_for_given(given, log=return_prob==2)
 
         if probs:
             probs = sorted(probs.items(), key=lambda x: x[1], reverse=True)
-            if return_prob == 1:
-                return probs[0][0], math.exp(probs[0][1])
-            elif return_prob == 2:
+            if return_prob != 0:
                 return probs[0]
             else:
                 return probs[0][0]
@@ -87,7 +82,7 @@ class NGramModel:
 
         i = 0
         while True:
-            probs = self._probs_for_given(given)
+            probs = self._probs_for_given(given, log=False)
 
             if not probs:
                 break
@@ -110,41 +105,44 @@ class NGramModel:
 
         if isinstance(given, list):
             given = tuple(given)
-        elif not isinstance(given, tuple) and given is not None:
-            given = (given,)
 
-        if isinstance(x, tuple):
-            if given is not None:
-                x = given + x
-            if pad_input:
-                x = self.pad_sequence(x)
+        if not isinstance(x, tuple):
+            x = (x,)
 
+        if given is not None:
+            if not isinstance(given, tuple):
+                given = (given,)
+            x = given + x
+
+        if pad_input:
+            x = self.pad_sequence(x)
+
+        if len(x) > self.n:
             x = token_ngrams(x, self.n, join=False, ngram_container=tuple)
-
-            p = 0 if log else 1
-            for ng in x:
-                given = ng[:(self.n - 1)]
-                log_p = self.ngram_prob_[(ng[-1], given)]
-                if log:
-                    p += log_p
-                else:
-                    p *= math.exp(log_p)
-            return p
         else:
-            if given is None:
-                p = self.ngram_prob_[x]
-            else:
-                p = self.ngram_prob_[(x, given)]
+            x = [x]
 
+        p = 0 if log else 1
+        for ng in x:
+            p_ng = self._prob_smooth(ng, log=log)
             if log:
-                return p
+                p += p_ng
             else:
-                return math.exp(p)
+                p *= p_ng
+
+        if log:
+            assert 0 <= math.exp(p) <= 1, 'smoothed prob. must be in [0, 1] interval'
+        else:
+            assert 0 <= p <= 1, 'smoothed prob. must be in [0, 1] interval'
+
+        return p
 
     def perplexity(self, x, pad_input=False):
+        if self.vocab_size_ <= 0:
+            raise ValueError('vocabulary must be non-empty')
+
         log_p = self.prob(x, pad_input=pad_input)
-        n = sum(len(ng) == 1 for ng in self.ngram_counts_.keys()) - 1
-        return math.pow(math.exp(log_p), -1.0/n)
+        return math.pow(math.exp(log_p), -1.0/self.vocab_size_)
 
     def pad_sequence(self, s):
         if not isinstance(s, (tuple, list)):
@@ -186,7 +184,36 @@ class NGramModel:
 
         return given
 
-    def _probs_for_given(self, given):
-        return {tok_given[0]: math.exp(p) for tok_given, p in self.ngram_prob_.items()
-                if isinstance(tok_given, tuple) and tok_given[1] == given}
+    def _prob_smooth(self, x, log):
+        n = len(x)
+        assert isinstance(x, tuple), '`x` must be a tuple'
+        assert 1 <= n <= self.n, f'`x` must be a tuple of length 1 to {self.n} in a {self.n}-gram model'
+
+        c = self.ngram_counts_.get(x, 0)
+
+        if n == 1:  # single token
+            d = self.n_unigrams_
+        else:       # x[:(self.n-1)] is the "given" sequence, i.e. the sequence before x[-1]
+            d = self.ngram_counts_.get(x[:(self.n-1)], 0)
+
+        if log:
+            p = math.log(c + self.k) - math.log(d + self.k * self.vocab_size_)
+            assert 0 <= math.exp(p) <= 1, 'smoothed prob. must be in [0, 1] interval'
+        else:
+            p = (c + self.k) / (d + self.k * self.vocab_size_)
+            assert 0 <= p <= 1, 'smoothed prob. must be in [0, 1] interval'
+
+        return p
+
+    def _probs_for_given(self, given, log):
+        probs = {}
+        len_g = len(given)
+        for ng in self.ngram_counts_.keys():
+            if len(ng) == len_g + 1 and ng[:len_g] == given:
+                candidate = ng[len_g:]
+                assert len(candidate) == 1
+                assert candidate not in probs
+                probs[candidate[0]] = self._prob_smooth(ng, log=log)
+
+        return probs
 
