@@ -3,7 +3,6 @@ N-gram models.
 
 TODO:
 
-  - hyperparam: keep top N vocab entries
   - add simple translation function between string and hash sequences
   - add __str__ and __repr__ methods
 
@@ -32,20 +31,31 @@ SPECIAL_TOKENS = bidict({
 
 
 class NGramModel:
-    def __init__(self, n, add_k_smoothing=1.0, tokens_as_hashes=True):
+    def __init__(self, n, add_k_smoothing=1.0, keep_vocab=None, tokens_as_hashes=True):
         if not isinstance(n, int) or n < 1:
             raise ValueError('`n` must be a strictly positive integer')
 
         if add_k_smoothing < 0:
             raise ValueError('`add_k_smoothing` must be positive')
 
+        if keep_vocab is not None:
+            if not isinstance(keep_vocab, (float, int)):
+                raise ValueError('`keep_vocab` must be either a float or an int')
+
+            if keep_vocab <= 0:
+                raise ValueError('if `keep_vocab` is given, it must be strictly positive')
+
+            if isinstance(keep_vocab, float) and keep_vocab > 1.0:
+                raise ValueError('if `keep_vocab` is given as float, it must be in range (0, 1]')
+
         self.n = n
         self.k = add_k_smoothing
+        self.keep_vocab = keep_vocab
         self.tokens_as_hashes = tokens_as_hashes
+
         self.vocab_size_ = 0
         self.n_unigrams_ = 0
         self.ngram_counts_ = Counter()
-        self.unigram_counts_ = {}
 
     def fit(self, corp):
         if isinstance(corp, Corpus):
@@ -55,16 +65,30 @@ class NGramModel:
 
         unigram_sents = list(map(self.pad_sequence, corp))
 
+        unigram_counts = Counter(t for s in unigram_sents for t in s)
+
+        if self.keep_vocab is not None:
+            if isinstance(self.keep_vocab, float):
+                keep_n = round(len(unigram_counts) * self.keep_vocab)
+            else:
+                keep_n = self.keep_vocab
+            keep_tok = set(list(zip(*unigram_counts.most_common(keep_n)))[0])
+            unigram_counts = {k: v for k, v in unigram_counts.items() if k in keep_tok}
+        else:
+            keep_tok = None
+
+        self.vocab_size_ = len(unigram_counts)
+        self.n_unigrams_ = sum(unigram_counts.values())
+
         self.ngram_counts_ = Counter()
+        oov_tok = OOV if self.tokens_as_hashes else SPECIAL_TOKENS[OOV]
         for i in range(1, self.n+1):
             ngrms_i = []
             for sent in unigram_sents:
+                if keep_tok:
+                    sent = [t if t in keep_tok else oov_tok for t in sent]
                 ngrms_i.extend(token_ngrams(sent, n=i, join=False, ngram_container=tuple))
             self.ngram_counts_.update(ngrms_i)
-
-        self.unigram_counts_ = [c for ng, c in self.ngram_counts_.items() if len(ng) == 1]
-        self.vocab_size_ = len(self.unigram_counts_)
-        self.n_unigrams_ = sum(self.unigram_counts_)
 
     def predict(self, given=None, return_prob=0):
         """
