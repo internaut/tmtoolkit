@@ -3,8 +3,7 @@ N-gram models.
 
 TODO:
 
-  - make sure runs as unigram model, too (N = 1)
-  - allow list of sentences as input to `fit`, too
+  - hyperparam: keep top N vocab entries
   - add simple translation function between string and hash sequences
   - add __str__ and __repr__ methods
 
@@ -14,41 +13,53 @@ import math
 import random
 from collections import Counter
 
-from tmtoolkit.corpus import doc_tokens
-from tmtoolkit.tokenseq import token_ngrams
+from bidict import bidict
 
+from tmtoolkit.corpus import doc_tokens, Corpus
+from tmtoolkit.tokenseq import token_ngrams
+from tmtoolkit.utils import flatten_list
 
 OOV = 0
 SENT_START = 10
 SENT_END = 11
 
 
+SPECIAL_TOKENS = bidict({
+    SENT_START: '<s>',
+    SENT_END: '</s>',
+    OOV: '<oov>'
+})
+
+
 class NGramModel:
-    def __init__(self, n, add_k_smoothing=1.0):
+    def __init__(self, n, add_k_smoothing=1.0, tokens_as_hashes=True):
+        if not isinstance(n, int) or n < 1:
+            raise ValueError('`n` must be a strictly positive integer')
+
+        if add_k_smoothing < 0:
+            raise ValueError('`add_k_smoothing` must be positive')
+
         self.n = n
         self.k = add_k_smoothing
+        self.tokens_as_hashes = tokens_as_hashes
         self.vocab_size_ = 0
         self.n_unigrams_ = 0
         self.ngram_counts_ = Counter()
         self.unigram_counts_ = {}
-        #self.ngram_prob_ = {}  # np.array([], dtype=np.float_)
 
-    def fit(self, corp, tokens_as_hashes=True):
-        unigram_sents = []
-        for sents in doc_tokens(corp, tokens_as_hashes=tokens_as_hashes, sentences=True).values():
-            new_sents = []
-            for s in sents:
-                new_sents.append(self.pad_sequence(s))
-            unigram_sents.extend(new_sents)
+    def fit(self, corp):
+        if isinstance(corp, Corpus):
+            corp = flatten_list(doc_tokens(corp, tokens_as_hashes=self.tokens_as_hashes, sentences=True).values())
+        elif not isinstance(corp, list):
+            raise ValueError('`corp` must be either a Corpus object or a list of sentences as token sequences')
+
+        unigram_sents = list(map(self.pad_sequence, corp))
 
         self.ngram_counts_ = Counter()
         for i in range(1, self.n+1):
             ngrms_i = []
             for sent in unigram_sents:
-                if i == 1:
-                    ngrms_i.extend(map(lambda x: (x, ), sent))
-                else:
-                    ngrms_i.extend(token_ngrams(sent, n=i, join=False, ngram_container=tuple))
+                ngrms_i.extend(token_ngrams(sent, n=i, join=False, ngram_container=tuple))
             self.ngram_counts_.update(ngrms_i)
 
         self.unigram_counts_ = [c for ng, c in self.ngram_counts_.items() if len(ng) == 1]
@@ -66,7 +77,7 @@ class NGramModel:
                  2-tuple with ``(must likely token, predition probability)``
         """
         given = self._prepare_given_param(given)
-        probs = self._probs_for_given(given, log=return_prob==2)
+        probs = self._probs_for_given(given, log=return_prob == 2)
 
         if probs:
             probs = sorted(probs.items(), key=lambda x: x[1], reverse=True)
@@ -78,6 +89,9 @@ class NGramModel:
             return None
 
     def generate_sequence(self, given=None, until_n=None, until_token=SENT_END):
+        if not self.tokens_as_hashes and isinstance(until_token, int):
+            until_token = SPECIAL_TOKENS[until_token]
+
         given = self._prepare_given_param(given)
 
         i = 0
@@ -88,7 +102,7 @@ class NGramModel:
                 break
 
             x = random.choices(list(probs.keys()), list(probs.values()))[0]
-            given = given[1:] + (x, )
+            given = (given + (x, ))[1:]
             i += 1
 
             yield x
@@ -148,13 +162,15 @@ class NGramModel:
         if not isinstance(s, (tuple, list)):
             raise ValueError('`s` must be tuple or list')
 
-        pad = self.n - 1
+        pad = max(self.n - 1, 1)
+        start_symbol = SENT_START if self.tokens_as_hashes else SPECIAL_TOKENS[SENT_START]
+        end_symbol = SENT_END if self.tokens_as_hashes else SPECIAL_TOKENS[SENT_END]
 
         if s:
             if isinstance(s, tuple):
                 s = list(s)
 
-            s_ = [SENT_START] * pad + s + [SENT_END] * pad
+            s_ = [start_symbol] * pad + s + [end_symbol] * pad
 
             if isinstance(s, tuple):
                 return tuple(s_)
@@ -167,6 +183,9 @@ class NGramModel:
                 return []
 
     def _prepare_given_param(self, given):
+        if self.n == 1:
+            return tuple()
+
         if given is None:
             given = (SENT_START, ) * (self.n - 1)
         else:
