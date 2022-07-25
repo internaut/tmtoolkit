@@ -455,7 +455,7 @@ def test_token_ngrams_hypothesis(tokens, n, join, join_str, ngram_container, pas
     args = dict(n=n, join=join, join_str=join_str, ngram_container=ngram_container,
                 embed_tokens=embed_tokens, keep_embed_tokens=keep_embed_tokens)
 
-    if n < 2:
+    if n < 1:
         with pytest.raises(ValueError):
             tokenseq.token_ngrams(tokens, **args)
     else:
@@ -479,7 +479,8 @@ def test_token_ngrams_hypothesis(tokens, n, join, join_str, ngram_container, pas
 
             if join:
                 assert all([isinstance(g, str) for g in res])
-                assert all([join_str in g for g in res])
+                if n > 1:
+                    assert all([join_str in g for g in res])
             else:
                 assert all([isinstance(g, ngram_container) for g in res])
 

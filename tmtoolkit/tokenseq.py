@@ -648,8 +648,8 @@ def token_ngrams(tokens: Sequence, n: int, join: bool = True, join_str: str = ' 
     :param keep_embed_tokens: if True, keep embedded tokens in the result
     :return: list of joined n-gram strings or list of n-grams that are n-sized sequences
     """
-    if n < 2:
-        raise ValueError('`n` must be at least 2')
+    if not isinstance(n, int) or n < 1:
+        raise ValueError('`n` must be a strictly positive integer')
 
     if len(tokens) == 0:
         ng = []
