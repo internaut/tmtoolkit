@@ -4,7 +4,8 @@ N-gram models.
 TODO:
 
   - add simple translation function between string and hash sequences
-  - add __str__ and __repr__ methods
+  - add docs
+  - add tests
 
 """
 
@@ -57,6 +58,13 @@ class NGramModel:
         self.n_unigrams_ = 0
         self.ngram_counts_ = Counter()
 
+    def __str__(self) -> str:
+        """String representation of this NGramModel object"""
+        return self.__repr__()
+
+    def __repr__(self):
+        return f'<NGramModel [n={self.n}, k={self.k}]>'
+
     def fit(self, corp):
         if isinstance(corp, Corpus):
             corp = flatten_list(doc_tokens(corp, tokens_as_hashes=self.tokens_as_hashes, sentences=True).values())
@@ -100,6 +108,9 @@ class NGramModel:
         :return: if `return_prob` is 0, return the most likely next token; if `return_prob` is not zero, return a
                  2-tuple with ``(must likely token, predition probability)``
         """
+        if not self.ngram_counts_:
+            raise ValueError('the model needs to be fitted before calling this method')
+
         given = self._prepare_given_param(given)
         probs = self._probs_for_given(given, log=return_prob == 2)
 
@@ -113,6 +124,9 @@ class NGramModel:
             return None
 
     def generate_sequence(self, given=None, until_n=None, until_token=SENT_END):
+        if not self.ngram_counts_:
+            raise ValueError('the model needs to be fitted before calling this method')
+
         if not self.tokens_as_hashes and isinstance(until_token, int):
             until_token = SPECIAL_TOKENS[until_token]
 
@@ -120,7 +134,7 @@ class NGramModel:
 
         i = 0
         while True:
-            probs = self._probs_for_given(given, log=False)
+            probs = self._probs_for_given(given, log=False, backoff=True)
 
             if not probs:
                 break
@@ -138,6 +152,9 @@ class NGramModel:
                 break
 
     def prob(self, x, given=None, log=True, pad_input=False):
+        if not self.ngram_counts_:
+            raise ValueError('the model needs to be fitted before calling this method')
+
         if isinstance(x, list):
             x = tuple(x)
 
@@ -176,6 +193,9 @@ class NGramModel:
         return p
 
     def perplexity(self, x, pad_input=False):
+        if not self.ngram_counts_:
+            raise ValueError('the model needs to be fitted before calling this method')
+
         if self.vocab_size_ <= 0:
             raise ValueError('vocabulary must be non-empty')
 
@@ -248,15 +268,23 @@ class NGramModel:
 
         return p
 
-    def _probs_for_given(self, given, log):
+    def _probs_for_given(self, given, log, backoff=False):
         probs = {}
         len_g = len(given)
-        for ng in self.ngram_counts_.keys():
-            if len(ng) == len_g + 1 and ng[:len_g] == given:
-                candidate = ng[len_g:]
-                assert len(candidate) == 1
-                assert candidate not in probs
-                probs[candidate[0]] = self._prob_smooth(ng, log=log)
+
+        while len_g >= 0:
+            for ng in self.ngram_counts_.keys():
+                if len(ng) == len_g + 1 and ng[:len_g] == given:
+                    candidate = ng[len_g:]
+                    assert len(candidate) == 1
+                    assert candidate not in probs
+                    probs[candidate[0]] = self._prob_smooth(ng, log=log)
+
+            if probs or not backoff:
+                break
+
+            given = given[1:]
+            len_g = len(given)
 
         return probs
 
