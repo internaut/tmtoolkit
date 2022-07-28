@@ -261,7 +261,8 @@ def mat2d_window_from_indices(mat: np.ndarray,
 def combine_sparse_matrices_columnwise(matrices: Sequence,
                                        col_labels: Sequence[StrOrInt],
                                        row_labels: Sequence[str] = None,
-                                       dtype: Optional[Union[str, np.dtype]] = None) \
+                                       dtype: Optional[Union[str, np.dtype]] = None,
+                                       dtype_cols: Optional[Union[str, np.dtype]] = None) \
         -> Union[Tuple[csr_matrix, np.ndarray], Tuple[csr_matrix, np.ndarray, np.ndarray]]:
     """
     Given a sequence of sparse matrices in `matrices` and their corresponding column labels in `col_labels`, stack these
@@ -305,6 +306,7 @@ def combine_sparse_matrices_columnwise(matrices: Sequence,
     :param col_labels: column labels for each matrix in `matrices`; may be sequence of strings or integers
     :param row_labels: optional sequence of row labels for each matrix in `matrices`
     :param dtype: optionally specify the dtype of the resulting sparse matrix
+    :param dtype_cols: optionally specify the dtype for the column labels
     :return: a tuple with (1) combined sparse matrix in CSR format; (2) column labels of the matrix; (3) optionally
              row labels of the matrix if `row_labels` is not None.
     """
@@ -344,7 +346,7 @@ def combine_sparse_matrices_columnwise(matrices: Sequence,
         all_row_labels = None
 
     # sort the column names
-    all_cols = np.array(sorted(all_cols))
+    all_cols = np.array(sorted(all_cols), dtype=dtype_cols)
     n_cols = len(all_cols)
 
     # iterate through the matrices and their corresponding column names
