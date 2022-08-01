@@ -219,6 +219,34 @@ def as_chararray(x: Union[np.ndarray, Sequence]) -> np.ndarray:
         return empty_chararray()
 
 
+def indices_of_matches(a: np.ndarray, b: np.ndarray, b_is_sorted: bool = False, check_a_in_b: bool = False) \
+        -> np.ndarray:
+    """
+    Return the indices into array `b` where elements in array `a` equal an element in `b`. E.g.: Suppose `b` is a
+    vocabulary like ``[13, 10, 12, 8]`` and `a` is a sequence of tokens ``[12, 13]``. Then ``indices_of_matches(a, b)``
+    will return ``[2, 0]`` since first element in `a` equals ``b[2]`` and the second element in `a` equals ``b[0]``.
+
+    :param a: 1D array which will be searched in `b`
+    :param b: 1D array of elements to match against; result will produce indices into this array; should have same
+              dtype as `a`
+    :param b_is_sorted: set this to True if you're sure that `b` is sorted; then a shortcut will be used
+    :param check_a_in_b: if True then set all indices where `a` has no matching element in `b` to -1; otherwise you
+                         should make sure that each element in `a` exists in `b` beforehand
+    :return: 1D array of indices; length equals the length of `a`
+    """
+
+    if b_is_sorted:  # shortcut
+        res = np.searchsorted(b, a)
+    else:
+        b_sorter = np.argsort(b)
+        res = b_sorter[np.searchsorted(b, a, sorter=b_sorter)]
+
+    if check_a_in_b:
+        res[~np.in1d(a, b)] = -1
+
+    return res
+
+
 def mat2d_window_from_indices(mat: np.ndarray,
                               row_indices: Optional[Union[List[int], np.ndarray]] = None,
                               col_indices: Optional[Union[List[int], np.ndarray]] = None,

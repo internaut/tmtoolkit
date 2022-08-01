@@ -3,6 +3,7 @@ from scipy import sparse
 from tmtoolkit.corpus import dtm
 
 #from tmtoolkit.bow.bow_stats import tf_log, tf_binary
+from tmtoolkit.utils import indices_of_matches
 
 
 class NaiveBayesClassifier:
@@ -45,9 +46,47 @@ class NaiveBayesClassifier:
         assert len(self.classes_) == self.token_counts_.shape[0]
         assert len(self.vocab_) == self.token_counts_.shape[1]
 
-    def predict(self):
-        pass
+    def predict(self, tok, return_prob=0):
+        probs = self.prob(tok)
+        i_max = np.argmax(probs)
+        c_max = self.classes_[i_max]
 
-    def prob(self, tok, classes=None):
-        classes = classes or self.classes_
-        # TODO
+        if return_prob > 0:
+            p = probs[i_max]
+            if return_prob == 2:
+                p = np.exp(p)
+            return c_max, p
+        else:
+            return c_max
+
+    def prob(self, tok, classes=None, log=True):
+        if classes is None:
+            classes = self.classes_
+
+        if not classes:
+            return np.array([])
+
+        if not isinstance(tok, (list, tuple)):
+            tok = [tok]
+
+        tok = np.array(tok, dtype=self.vocab_.dtype)
+        tok = tok[np.in1d(tok, self.vocab_)]
+
+        probs = []
+        for c in classes:
+            if c not in self.classes_:
+                raise ValueError(f'unknown class: {c}')
+            i_c = self.classes_.index(c)
+            tok_ind = indices_of_matches(tok, self.vocab_)
+            c_counts = self.token_counts_[i_c, :]
+            tok_c = c_counts[0, tok_ind]
+
+            p = self.prior_[i_c] \
+                + np.sum(np.log(tok_c.todense() + self.k) - np.log(np.sum(c_counts.todense() + self.k)))
+
+            if log:
+                probs.append(p)
+            else:
+                probs.append(np.exp(p))
+
+        return np.array(probs)

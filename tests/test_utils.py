@@ -7,6 +7,7 @@ from datetime import date
 import pytest
 import hypothesis.strategies as st
 from hypothesis import given
+from hypothesis.extra.numpy import arrays, array_shapes
 import numpy as np
 import pandas as pd
 from scipy.sparse import coo_matrix, isspmatrix_csr
@@ -17,7 +18,7 @@ from tmtoolkit.utils import (pickle_data, unpickle_file, flatten_list, greedy_pa
                              mat2d_window_from_indices, combine_sparse_matrices_columnwise, path_split, read_text_file,
                              linebreaks_win2unix, split_func_args, empty_chararray, as_chararray, merge_dicts,
                              merge_sets, sample_dict, enable_logging, set_logging_level, disable_logging, dict2df,
-                             applychain)
+                             applychain, indices_of_matches)
 
 PRINTABLE_ASCII_CHARS = [chr(c) for c in range(32, 127)]
 
@@ -144,6 +145,14 @@ def test_as_chararray(x, as_numpy_array):
     assert res.ndim == 1
     assert np.issubdtype(res.dtype, 'str')
     assert res.tolist() == list(map(str, x_orig))
+
+
+@given(a=arrays(int, array_shapes(min_dims=1, max_dims=1), elements=st.integers(-5, 5)),
+       b=arrays(int, array_shapes(min_dims=1, max_dims=1), elements=st.integers(-5, 5), unique=True),
+       b_is_sorted=st.booleans(),
+       check_a_in_b=st.booleans())
+def test_indices_of_matches(a, b, b_is_sorted, check_a_in_b):
+    pass  # TODO
 
 
 @given(data=st.dictionaries(keys=st.text(string.ascii_letters, min_size=1), values=st.integers(), max_size=10),
