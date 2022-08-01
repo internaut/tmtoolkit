@@ -152,7 +152,23 @@ def test_as_chararray(x, as_numpy_array):
        b_is_sorted=st.booleans(),
        check_a_in_b=st.booleans())
 def test_indices_of_matches(a, b, b_is_sorted, check_a_in_b):
-    pass  # TODO
+    if not check_a_in_b:
+        a = a[np.in1d(a, b)]
+
+    if b_is_sorted:
+        b = np.sort(b)
+
+    if check_a_in_b and np.any(~np.in1d(a, b)):
+        with pytest.raises(ValueError):
+            indices_of_matches(a, b, b_is_sorted=b_is_sorted, check_a_in_b=check_a_in_b)
+    else:
+        ind = indices_of_matches(a, b, b_is_sorted=b_is_sorted, check_a_in_b=check_a_in_b)
+        assert isinstance(ind, np.ndarray)
+        assert ind.shape == a.shape
+
+        matched = b[ind]
+        assert matched.shape == a.shape
+        assert np.all(matched == a)
 
 
 @given(data=st.dictionaries(keys=st.text(string.ascii_letters, min_size=1), values=st.integers(), max_size=10),

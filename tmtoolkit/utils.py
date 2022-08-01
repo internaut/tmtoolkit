@@ -222,7 +222,7 @@ def as_chararray(x: Union[np.ndarray, Sequence]) -> np.ndarray:
 def indices_of_matches(a: np.ndarray, b: np.ndarray, b_is_sorted: bool = False, check_a_in_b: bool = False) \
         -> np.ndarray:
     """
-    Return the indices into array `b` where elements in array `a` equal an element in `b`. E.g.: Suppose `b` is a
+    Return the indices into 1D array `b` where elements in 1D array `a` equal an element in `b`. E.g.: Suppose `b` is a
     vocabulary like ``[13, 10, 12, 8]`` and `a` is a sequence of tokens ``[12, 13]``. Then ``indices_of_matches(a, b)``
     will return ``[2, 0]`` since first element in `a` equals ``b[2]`` and the second element in `a` equals ``b[0]``.
 
@@ -230,19 +230,19 @@ def indices_of_matches(a: np.ndarray, b: np.ndarray, b_is_sorted: bool = False, 
     :param b: 1D array of elements to match against; result will produce indices into this array; should have same
               dtype as `a`
     :param b_is_sorted: set this to True if you're sure that `b` is sorted; then a shortcut will be used
-    :param check_a_in_b: if True then set all indices where `a` has no matching element in `b` to -1; otherwise you
-                         should make sure that each element in `a` exists in `b` beforehand
+    :param check_a_in_b: if True then check if all elements in `a` exist in `b`; if this is not the case, raise an
+                         exception
     :return: 1D array of indices; length equals the length of `a`
     """
+
+    if check_a_in_b and np.any(~np.in1d(a, b)):
+        raise ValueError('at least one element in `a` does not exist in `b`')
 
     if b_is_sorted:  # shortcut
         res = np.searchsorted(b, a)
     else:
         b_sorter = np.argsort(b)
         res = b_sorter[np.searchsorted(b, a, sorter=b_sorter)]
-
-    if check_a_in_b:
-        res[~np.in1d(a, b)] = -1
 
     return res
 
