@@ -3,7 +3,6 @@ N-gram models as in [JurafskyMartin2021]_. Mainly provides the :class:`NGramMode
 
 TODO:
 
-- add simple translation function between string and hash sequences
 - add tests
 
 .. [JurafskyMartin2021] Jurafsky, D. and Martin, J.H., 2021. Speech and Language Processing (3rd ed. draft). Online:
@@ -15,12 +14,12 @@ from __future__ import annotations
 import math
 import random
 from collections import Counter
-from typing import Optional, Union, List, Tuple, Generator, Dict
+from typing import Optional, Union, List, Tuple, Generator, Dict, Iterable
 
 from bidict import bidict
 
 from tmtoolkit.corpus import doc_tokens, Corpus
-from tmtoolkit.tokenseq import token_ngrams
+from tmtoolkit.tokenseq import token_ngrams, token_hash_convert
 from tmtoolkit.types import StrOrInt
 from tmtoolkit.utils import flatten_list
 
@@ -73,6 +72,7 @@ class NGramModel:
         self.vocab_size_: int = 0
         self.n_unigrams_: int = 0
         self.ngram_counts_: Counter = Counter()  # maps tuples of 1-grams, 2-grams, ..., n-grams to their count
+        self.stringstore = None  # used for string <-> hash conversion when Corpus obj. was passed in `fit()`
 
     def __str__(self) -> str:
         """String representation of this NGramModel object."""
@@ -91,7 +91,10 @@ class NGramModel:
         """
 
         # check input
+        self.stringstore = None  # reset
+
         if isinstance(corp, Corpus):
+            self.stringstore = corp.nlp.vocab.strings
             corp = flatten_list(doc_tokens(corp, tokens_as_hashes=self.tokens_as_hashes, sentences=True).values())
         elif not isinstance(corp, list):
             raise ValueError('`corp` must be either a Corpus object or a list of sentences as token sequences')
@@ -362,6 +365,24 @@ class NGramModel:
                 return tuple()
             else:
                 return []
+
+    def convert_token_sequence(self, tok: Iterable[StrOrInt], collapse: Optional[str] = ' ') \
+            -> Union[str, Tuple[StrOrInt, ...], List[StrOrInt]]:
+        """
+        Convert a sequence of tokens `tok` to
+
+        :param tok:
+        :param collapse:
+        :return:
+        """
+        if self.stringstore is None:
+            raise ValueError('this method can only be used when this model was fit on a `Corpus` object or '
+                             '`self.stringstore` was set manually')
+
+        if not self.tokens_as_hashes and isinstance(collapse, str):
+            collapse = None
+
+        return token_hash_convert(tok, stringstore=self.stringstore, special_tokens=SPECIAL_TOKENS, collapse=collapse)
 
     def _prepare_given_param(self, given: Optional[Union[StrOrInt, Tuple[StrOrInt, ...], List[StrOrInt]]]) \
             -> Tuple[StrOrInt, ...]:
