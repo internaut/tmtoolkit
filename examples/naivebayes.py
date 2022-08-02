@@ -5,10 +5,12 @@ class.
 TODO:
 
 - add tests
+- add update method
 
 .. [JurafskyMartin2021] Jurafsky, D. and Martin, J.H., 2021. Speech and Language Processing (3rd ed. draft). Online:
                         https://web.stanford.edu/~jurafsky/slp3/
 """
+
 from __future__ import annotations
 from typing import Optional, List, Union, Dict, Tuple
 
