@@ -3,20 +3,27 @@ Naive Bayes classifier model as in [JurafskyMartin2021]_, chapt. 4. Mainly provi
 class.
 
 TODO:
-
-- add tests
-- add update method
+  - add update method
 
 .. [JurafskyMartin2021] Jurafsky, D. and Martin, J.H., 2021. Speech and Language Processing (3rd ed. draft). Online:
                         https://web.stanford.edu/~jurafsky/slp3/
 """
 
 from __future__ import annotations
-from typing import Optional, List, Union, Dict, Tuple
+
+from importlib.util import find_spec
+from typing import Optional, List, Union, Dict, Tuple, Sequence
 
 import numpy as np
 from scipy import sparse
-from tmtoolkit.corpus import dtm, Corpus, Document, document_token_attr
+
+if not any(find_spec(pkg) is None for pkg in ('spacy', 'bidict', 'loky')):   # if textproc dep. are installed
+    from tmtoolkit.corpus import Corpus, Document
+else:
+    class Corpus:
+        pass
+    class Document:
+        pass
 
 from tmtoolkit.bow.bow_stats import tf_binary
 from tmtoolkit.types import StrOrInt
@@ -66,22 +73,30 @@ class NaiveBayesClassifier:
         """String representation of this NaiveBayesClassifier object."""
         return f'<NaiveBayesClassifier [k={self.k}, binary_counts={self.binary_counts}]>'
 
-    def fit(self, corp: Corpus, classes_docs: Dict[str, Union[List[str], Tuple[str, ...], np.ndarray]]) \
-            -> NaiveBayesClassifier:
+    def fit(self, data: Union[Corpus, Tuple[Union[sparse.csr_matrix, np.ndarray], Sequence, Sequence]],
+            classes_docs: Dict[str, Union[list, tuple, np.ndarray]]) -> NaiveBayesClassifier:
         """
         Fit this naive bayes model using a :class:`~tmtoolkit.corpus.Corpus` object and a dict `classes_docs` that
         maps classes to document labels.
 
-        :param corp: a :class:`~tmtoolkit.corpus.Corpus` object with training documents
-        :param classes_docs: a dict that maps classes to document labels
+        :param data: either a :class:`~tmtoolkit.corpus.Corpus` object with training documents or tuple consisting of a
+                     (sparse) document-term matrix, document labels and vocabulary
+        :param classes_docs: a dict that maps classes to document labels or indices
         :return: this instance
         """
         if not classes_docs:
             raise ValueError('at least one class must be given in `classes_docs`')
 
         # generate a sparse document-term matrix from the corpus
-        dtm_mat, doclbls, vocab = dtm(corp, tokens_as_hashes=self.tokens_as_hashes, return_doc_labels=True,
-                                      return_vocab=True)
+        if isinstance(data, Corpus):
+            from tmtoolkit.corpus import dtm
+            dtm_mat, doclbls, vocab = dtm(data, tokens_as_hashes=self.tokens_as_hashes, return_doc_labels=True,
+                                          return_vocab=True)
+        else:
+            dtm_mat, doclbls, vocab = data
+
+            if not sparse.issparse(dtm_mat):
+                dtm_mat = sparse.csr_matrix(dtm_mat)
 
         if self.binary_counts:  # optionally transform to binary matrix
             dtm_mat = tf_binary(dtm_mat)
@@ -151,7 +166,7 @@ class NaiveBayesClassifier:
 
         if return_prob > 0:
             p = probs[i_max]
-            if return_prob == 2:
+            if return_prob == 1:
                 p = np.exp(p)
             return c_max, p
         else:
@@ -182,6 +197,7 @@ class NaiveBayesClassifier:
             return np.array([])
 
         if isinstance(tok, Document):
+            from tmtoolkit.corpus import document_token_attr
             tok = document_token_attr(tok, 'token', as_hashes=self.tokens_as_hashes, as_array=True)
         elif not isinstance(tok, (list, tuple)):
             tok = [tok]
