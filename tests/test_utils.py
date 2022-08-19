@@ -18,7 +18,7 @@ from tmtoolkit.utils import (pickle_data, unpickle_file, flatten_list, greedy_pa
                              mat2d_window_from_indices, combine_sparse_matrices_columnwise, path_split, read_text_file,
                              linebreaks_win2unix, split_func_args, empty_chararray, as_chararray, merge_dicts,
                              merge_sets, sample_dict, enable_logging, set_logging_level, disable_logging, dict2df,
-                             applychain, indices_of_matches)
+                             applychain, indices_of_matches, chararray_elem_size)
 
 PRINTABLE_ASCII_CHARS = [chr(c) for c in range(32, 127)]
 
@@ -145,6 +145,17 @@ def test_as_chararray(x, as_numpy_array):
     assert res.ndim == 1
     assert np.issubdtype(res.dtype, 'str')
     assert res.tolist() == list(map(str, x_orig))
+
+
+@given(x=st.lists(st.text()),
+       as_numpy_array=st.booleans())
+def test_chararray_elem_size(x, as_numpy_array):
+    if as_numpy_array:
+        x = as_chararray(x)
+        assert chararray_elem_size(x) == max(1, np.max(np.char.str_len(x))) if len(x) > 0 else 1
+    else:
+        with pytest.raises(ValueError):
+            chararray_elem_size(x)
 
 
 @given(a=arrays(int, array_shapes(min_dims=1, max_dims=1), elements=st.integers(-5, 5)),
