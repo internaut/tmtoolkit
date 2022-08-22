@@ -83,7 +83,10 @@ class NaiveBayesClassifier:
 
         :return: number of documents used to train this classifier
         """
-        return np.sum(self.class_sizes_)
+        if self.class_sizes_ is None:
+            return 0
+        else:
+            return np.sum(self.class_sizes_)
 
     def fit(self, data: Union[Corpus, Tuple[Union[sparse.csr_matrix, np.ndarray], Sequence, Sequence]],
             classes_docs: Dict[str, Union[list, tuple, np.ndarray]]) -> NaiveBayesClassifier:
