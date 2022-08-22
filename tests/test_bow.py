@@ -9,7 +9,7 @@ from scipy.sparse import coo_matrix, csr_matrix, issparse
 
 from ._testtools import strategy_dtm
 
-from tmtoolkit import bow
+from tmtoolkit import bow, utils
 
 try:
     import gensim
@@ -665,9 +665,23 @@ def test_naivebayes_on_dtm(add_k_smoothing, binary_counts):
 
     classes_docs = {'neg': ['d1', 'd2', 'd3'], 'pos': ['d4', 'd5']}
 
-    _test_naivebayes(add_k_smoothing, binary_counts, False, (dtm, docs, vocab), classes_docs,
-                     expected_vocab=vocab,
-                     hash_fn=lambda t: t)
+    hash_fn = lambda t: t
+
+    nb = _test_naivebayes(add_k_smoothing, binary_counts, False, (dtm, docs, vocab), classes_docs,
+                          expected_vocab=vocab,
+                          hash_fn=hash_fn)
+
+    if nb:
+        dtm_mat2 = np.array([[0, 0, 1, 1, 0, 0, 0],
+                             [0, 0, 0, 0, 0, 1, 1],
+                             [1, 1, 0, 0, 1, 0, 0]], dtype=int)
+        docs2 = ['d1', 'd2', 'd3-neutral']
+        vocab2 = ['and', 'bad', 'boring', 'extremely', 'good', 'interesting', 'very']
+        classes_docs2 = {'neg': ['d1'], 'pos': ['d2'], 'neutral': ['d3-neutral']}
+
+        _test_naivebayes_update(nb, (dtm_mat2, docs2, vocab2), classes_docs2,
+                                expected_vocab_set=set(vocab) | set(vocab2),
+                                hash_fn=hash_fn)
 
 
 @given(add_k_smoothing=st.floats(-1, 1),
@@ -688,17 +702,32 @@ def test_naivebayes_on_corpus(add_k_smoothing, binary_counts, tokens_as_hashes):
                   language='en')
 
     if tokens_as_hashes:
-        h = hash_string
+        hash_fn = hash_string
     else:
-        h = lambda t: t
+        hash_fn = lambda t: t
 
     classes_docs = {'neg': ['d1', 'd2', 'd3'], 'pos': ['d4', 'd5']}
-    corp2 = Corpus({'test': 'OOV fun'}, language='en')
+    vocab = vocabulary(corp, tokens_as_hashes=tokens_as_hashes)
 
-    _test_naivebayes(add_k_smoothing, binary_counts, tokens_as_hashes, corp, classes_docs,
-                     expected_vocab=vocabulary(corp, tokens_as_hashes=tokens_as_hashes),
-                     hash_fn=h,
-                     test_doc=corp2['test'])
+    corp_test_doc = Corpus({'test': 'OOV fun'}, language='en')
+
+    nb = _test_naivebayes(add_k_smoothing, binary_counts, tokens_as_hashes, corp, classes_docs,
+                          expected_vocab=vocab,
+                          hash_fn=hash_fn,
+                          test_doc=corp_test_doc['test'])
+
+    if nb:
+        corp2 = Corpus({'d1': 'extremely boring',
+                        'd2': 'very interesting',
+                        'd3-neutral': 'good and bad'},
+                       language='en')
+
+        classes_docs2 = {'neg': ['d1'], 'pos': ['d2'], 'neutral': ['d3-neutral']}
+        vocab2 = vocabulary(corp2, tokens_as_hashes=tokens_as_hashes)
+
+        _test_naivebayes_update(nb, corp2, classes_docs2,
+                                expected_vocab_set=set(vocab) | set(vocab2),
+                                hash_fn=hash_fn)
 
 
 def _test_naivebayes(add_k_smoothing, binary_counts, tokens_as_hashes, data, classes_docs, expected_vocab, hash_fn,
@@ -709,15 +738,27 @@ def _test_naivebayes(add_k_smoothing, binary_counts, tokens_as_hashes, data, cla
         with pytest.raises(ValueError):
             bow.NaiveBayesClassifier(add_k_smoothing=add_k_smoothing, binary_counts=binary_counts,
                                      tokens_as_hashes=tokens_as_hashes)
+
+        return None
     else:
         nb = bow.NaiveBayesClassifier(add_k_smoothing=add_k_smoothing, binary_counts=binary_counts,
                                       tokens_as_hashes=tokens_as_hashes)
+        assert nb.n_trained_docs == 0
+
+        with pytest.raises(ValueError):   # models needs to be fitted before
+            assert nb.predict(h('fun'))
+        with pytest.raises(ValueError):   # models needs to be fitted before
+            assert nb.prob(h('fun'))
+        with pytest.raises(ValueError):   # models needs to be fitted before
+            assert nb.update(data, classes_docs)
+
         assert isinstance(nb.fit(data, classes_docs), bow.NaiveBayesClassifier)
         assert isinstance(nb.token_counts_, sparse.csr_matrix)
         assert nb.token_counts_.shape == (len(classes_docs), len(expected_vocab))
         assert set(nb.classes_) == set(classes_docs.keys())
         assert set(nb.vocab_) == set(expected_vocab)
         assert nb.prior_.shape == (len(classes_docs), )
+        assert nb.n_trained_docs == sum(len(docs) for docs in classes_docs.values())
 
         pred = nb.predict(h('fun'))
         assert pred == 'pos'
@@ -757,3 +798,24 @@ def _test_naivebayes(add_k_smoothing, binary_counts, tokens_as_hashes, data, cla
 
         if test_doc is not None:
             assert nb.predict(h('fun')) == nb.predict(test_doc)
+
+        return nb
+
+
+def _test_naivebayes_update(nb, data, classes_docs, expected_vocab_set, hash_fn):
+    h = hash_fn
+    expected_classes_set = set(nb.classes_) | set(classes_docs.keys())
+
+    assert isinstance(nb.update(data, classes_docs), bow.NaiveBayesClassifier)
+    assert isinstance(nb.token_counts_, sparse.csr_matrix)
+    assert nb.token_counts_.shape == (len(expected_classes_set), len(expected_vocab_set))
+    assert set(nb.classes_) == expected_classes_set
+    assert set(nb.vocab_) == expected_vocab_set
+    assert nb.prior_.shape == (len(expected_classes_set),)
+
+    neutral_tokens = np.array([h(t) for t in ['good', 'and', 'bad']])
+    neutral_counts = nb.token_counts_[np.array(nb.classes_) == 'neutral',
+                                      utils.indices_of_matches(neutral_tokens, nb.vocab_)]
+    assert np.all(neutral_counts == 1)
+
+    assert nb.token_counts_[np.array(nb.classes_) == 'neg', nb.vocab_ == h('extremely')][0][0] == 1

@@ -219,6 +219,23 @@ def as_chararray(x: Union[np.ndarray, Sequence]) -> np.ndarray:
         return empty_chararray()
 
 
+numpy_unicode_bytes = np.dtype('U1').itemsize
+
+
+def chararray_elem_size(x: np.ndarray) -> int:
+    """
+    Return the reserved size of each element in a NumPy unicode character array `x`, which is the maximum character
+    length of all elements in `x`, but at least 1. E.g. if ``x.dtype`` is ``'<U5'``, this function will return 5.
+
+    :param x: NumPy unicode character array
+    :return: reserved size of each element
+    """
+    if isinstance(x, np.ndarray) and np.issubdtype(x.dtype, 'U'):
+        return x.itemsize // numpy_unicode_bytes
+    else:
+        raise ValueError('`x` must be a NumPy unicode character array')
+
+
 def indices_of_matches(a: np.ndarray, b: np.ndarray, b_is_sorted: bool = False, check_a_in_b: bool = False) \
         -> np.ndarray:
     """
