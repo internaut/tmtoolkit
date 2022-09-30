@@ -89,6 +89,63 @@ def test_collapse_tokens(tokens, tokens_as_array, collapse, collapse_as_array):
                 tokenseq.collapse_tokens(tokens, collapse=collapse)
 
 
+@given(tokens=strategy_tokens(string.ascii_letters),
+       tokens_as_hashes=st.booleans(),
+       tokens_as_array=st.booleans(),
+       special_tokens=st.one_of(st.none(), strategy_tokens(string.ascii_letters, min_size=1)),
+       collapse=st.booleans())
+def test_token_hash_convert(tokens, tokens_as_hashes, tokens_as_array, special_tokens, collapse):
+    # manually make bidicts
+    stringstore = {t: hash(t) for t in tokens}
+    stringstore.update({h: t for t, h in stringstore.items()})
+
+    if special_tokens is not None:
+        special_tokens_dict = dict(enumerate(special_tokens))
+        special_tokens_dict.update({t: i for i, t in special_tokens_dict.items()})
+    else:
+        special_tokens_dict = None
+
+    if tokens_as_hashes:
+        tokens = list(map(hash, tokens))
+
+    if tokens_as_array:
+        tokens = np.array(tokens, dtype='int64' if tokens_as_hashes else 'str')
+
+    collapse = ' ' if collapse and tokens_as_hashes else None
+    res = tokenseq.token_hash_convert(tokens, stringstore=stringstore, special_tokens=special_tokens_dict,
+                                      collapse=collapse, arr_dtype_for_hashes='int64')
+
+    if collapse == ' ':
+        assert isinstance(res, str)
+        res = res.split(collapse)
+
+        if special_tokens_dict:
+            assert all(t in stringstore or t in special_tokens_dict for t in res if t != '')
+        else:
+            assert all(t in stringstore for t in res if t != '')
+
+        assert all(isinstance(t, str) for t in res)
+    else:
+        if tokens_as_array:
+            assert isinstance(res, np.ndarray)
+        else:
+            assert isinstance(res, list)
+
+        assert len(res) == len(tokens)
+
+        if special_tokens_dict:
+            assert all(t in stringstore or t in special_tokens_dict for t in res)
+        else:
+            assert all(t in stringstore for t in res)
+
+        if tokens_as_hashes:
+            if tokens_as_array:
+                assert np.issubdtype(res.dtype, 'str')
+            else:
+                assert all(isinstance(t, str) for t in res)
+
+
+
 @given(token=st.one_of(st.text(string.printable),
                        st.sampled_from(['\u00C7', '\u0043\u0327', '\u0043\u0332', 'é', 'ῷ'])),
        method=st.sampled_from(['icu', 'ascii', 'nonexistent']),
@@ -455,7 +512,7 @@ def test_token_ngrams_hypothesis(tokens, n, join, join_str, ngram_container, pas
     args = dict(n=n, join=join, join_str=join_str, ngram_container=ngram_container,
                 embed_tokens=embed_tokens, keep_embed_tokens=keep_embed_tokens)
 
-    if n < 2:
+    if n < 1:
         with pytest.raises(ValueError):
             tokenseq.token_ngrams(tokens, **args)
     else:
@@ -479,7 +536,8 @@ def test_token_ngrams_hypothesis(tokens, n, join, join_str, ngram_container, pas
 
             if join:
                 assert all([isinstance(g, str) for g in res])
-                assert all([join_str in g for g in res])
+                if n > 1:
+                    assert all([join_str in g for g in res])
             else:
                 assert all([isinstance(g, ngram_container) for g in res])
 

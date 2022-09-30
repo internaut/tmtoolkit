@@ -27,7 +27,7 @@ import globre
 import numpy as np
 
 from .types import StrOrInt
-from .utils import flatten_list
+from .utils import flatten_list, empty_chararray
 
 
 #%% functions that operate on single string tokens or texts
@@ -173,6 +173,15 @@ def token_lengths(tokens: Union[Iterable[str], np.ndarray]) -> List[int]:
 
 def collapse_tokens(tokens: Union[Iterable[str], np.ndarray], collapse: Union[str, Iterable[str], np.ndarray] = ' ') \
         -> str:
+    """
+    Take a sequence of tokens `tokens` and turn it into a string by joining the tokens using either a single "glue"
+    string or a sequence of "glue" strings in `collapse`.
+
+    :param tokens: list or NumPy array of string tokens
+    :param collapse: either single string or list / NumPy array of "glue" strings where ``collapse[i]`` is the string
+                     to appear after ``tokens[i]``
+    :return: collapsed tokens as string
+    """
     if isinstance(collapse, str):
         return collapse.join(tokens)
     else:
@@ -181,6 +190,47 @@ def collapse_tokens(tokens: Union[Iterable[str], np.ndarray], collapse: Union[st
 
         interleaved = itertools.chain(*zip(tokens, collapse))
         return ''.join(interleaved)
+
+
+def token_hash_convert(tokens: Union[Iterable[Union[str, int]], np.ndarray],
+                       stringstore: dict,
+                       special_tokens: Optional[dict] = None,
+                       collapse: Optional[Union[str, Iterable[str], np.ndarray]] = None,
+                       arr_dtype_for_hashes: str = None) \
+        -> Union[str, Iterable[Union[str, int]], np.ndarray]:
+    """
+    Perform token <-> hash conversion on a sequence of tokens `tokens` using the bijection `stringstore`. If `tokens`
+    contains token hashes, the output is a sequence of token strings and if `tokens` contains token strings, the output
+    is a sequence of token hashes. In case the output is a sequence of token strings, these can be collapsed using the
+    `collapse` parameter.
+
+    :param tokens: a sequence of tokens either as token strings or token hashes
+    :param stringstore: a bijection mapping strings to hashes and vice versa as implemented in SpaCy's ``StringStore``
+    :param special_tokens: optional bijection for tokens not present or of higher importance than those in `stringstore`
+    :param collapse: either single string or list / NumPy array of "glue" strings where ``collapse[i]`` is the string
+                     to appear after ``tokens[i]``; if this is None, no collapsing is applied, i.e. this function
+                     returns a sequence of converted tokens instead of a string; collapsing can only be applied if
+                     `tokens` is converted to strings and not hashes
+    :param arr_dtype_for_hashes: if `tokens` is an array, assume this dtype for hashes (e.g. 'uint64' if using SpaCy's
+                                 token hashes)
+    :return: converted sequence of tokens or collapsed token string if `collapse` is given
+    """
+
+    conv = map(lambda t: special_tokens[t] if special_tokens and t in special_tokens else stringstore[t], tokens)
+
+    if collapse is None:
+        if isinstance(tokens, tuple):
+            return tuple(conv)
+        if isinstance(tokens, np.ndarray):
+            return_strarr = np.issubdtype(tokens.dtype, arr_dtype_for_hashes)
+            if len(tokens) == 0:
+                return empty_chararray() if return_strarr else np.array([], dtype=arr_dtype_for_hashes)
+            else:
+                return np.array(list(conv), dtype='str' if return_strarr else arr_dtype_for_hashes)
+        else:
+            return list(conv)
+    else:
+        return collapse_tokens(conv, collapse=collapse)
 
 
 def pmi(x: np.ndarray, y: np.ndarray, xy: np.ndarray, n_total: Optional[int] = None, logfn: Callable = np.log,
@@ -215,7 +265,7 @@ def pmi(x: np.ndarray, y: np.ndarray, xy: np.ndarray, n_total: Optional[int] = N
         y = y/n_total
         xy = xy/n_total
 
-    pmi_val = logfn(xy) - logfn(x * y)
+    pmi_val = logfn(xy) - logfn(x) - logfn(y)
 
     if k > 1:
         return pmi_val - (1-k) * logfn(xy)
@@ -648,8 +698,8 @@ def token_ngrams(tokens: Sequence, n: int, join: bool = True, join_str: str = ' 
     :param keep_embed_tokens: if True, keep embedded tokens in the result
     :return: list of joined n-gram strings or list of n-grams that are n-sized sequences
     """
-    if n < 2:
-        raise ValueError('`n` must be at least 2')
+    if not isinstance(n, int) or n < 1:
+        raise ValueError('`n` must be a strictly positive integer')
 
     if len(tokens) == 0:
         ng = []
