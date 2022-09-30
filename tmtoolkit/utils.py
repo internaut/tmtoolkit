@@ -219,6 +219,51 @@ def as_chararray(x: Union[np.ndarray, Sequence]) -> np.ndarray:
         return empty_chararray()
 
 
+numpy_unicode_bytes = np.dtype('U1').itemsize
+
+
+def chararray_elem_size(x: np.ndarray) -> int:
+    """
+    Return the reserved size of each element in a NumPy unicode character array `x`, which is the maximum character
+    length of all elements in `x`, but at least 1. E.g. if ``x.dtype`` is ``'<U5'``, this function will return 5.
+
+    :param x: NumPy unicode character array
+    :return: reserved size of each element
+    """
+    if isinstance(x, np.ndarray) and np.issubdtype(x.dtype, 'U'):
+        return x.itemsize // numpy_unicode_bytes
+    else:
+        raise ValueError('`x` must be a NumPy unicode character array')
+
+
+def indices_of_matches(a: np.ndarray, b: np.ndarray, b_is_sorted: bool = False, check_a_in_b: bool = False) \
+        -> np.ndarray:
+    """
+    Return the indices into 1D array `b` where elements in 1D array `a` equal an element in `b`. E.g.: Suppose `b` is a
+    vocabulary like ``[13, 10, 12, 8]`` and `a` is a sequence of tokens ``[12, 13]``. Then ``indices_of_matches(a, b)``
+    will return ``[2, 0]`` since first element in `a` equals ``b[2]`` and the second element in `a` equals ``b[0]``.
+
+    :param a: 1D array which will be searched in `b`
+    :param b: 1D array of elements to match against; result will produce indices into this array; should have same
+              dtype as `a`
+    :param b_is_sorted: set this to True if you're sure that `b` is sorted; then a shortcut will be used
+    :param check_a_in_b: if True then check if all elements in `a` exist in `b`; if this is not the case, raise an
+                         exception
+    :return: 1D array of indices; length equals the length of `a`
+    """
+
+    if check_a_in_b and np.any(~np.in1d(a, b)):
+        raise ValueError('at least one element in `a` does not exist in `b`')
+
+    if b_is_sorted:  # shortcut
+        res = np.searchsorted(b, a)
+    else:
+        b_sorter = np.argsort(b)
+        res = b_sorter[np.searchsorted(b, a, sorter=b_sorter)]
+
+    return res
+
+
 def mat2d_window_from_indices(mat: np.ndarray,
                               row_indices: Optional[Union[List[int], np.ndarray]] = None,
                               col_indices: Optional[Union[List[int], np.ndarray]] = None,
@@ -261,7 +306,8 @@ def mat2d_window_from_indices(mat: np.ndarray,
 def combine_sparse_matrices_columnwise(matrices: Sequence,
                                        col_labels: Sequence[StrOrInt],
                                        row_labels: Sequence[str] = None,
-                                       dtype: Optional[Union[str, np.dtype]] = None) \
+                                       dtype: Optional[Union[str, np.dtype]] = None,
+                                       dtype_cols: Optional[Union[str, np.dtype]] = None) \
         -> Union[Tuple[csr_matrix, np.ndarray], Tuple[csr_matrix, np.ndarray, np.ndarray]]:
     """
     Given a sequence of sparse matrices in `matrices` and their corresponding column labels in `col_labels`, stack these
@@ -305,6 +351,7 @@ def combine_sparse_matrices_columnwise(matrices: Sequence,
     :param col_labels: column labels for each matrix in `matrices`; may be sequence of strings or integers
     :param row_labels: optional sequence of row labels for each matrix in `matrices`
     :param dtype: optionally specify the dtype of the resulting sparse matrix
+    :param dtype_cols: optionally specify the dtype for the column labels
     :return: a tuple with (1) combined sparse matrix in CSR format; (2) column labels of the matrix; (3) optionally
              row labels of the matrix if `row_labels` is not None.
     """
@@ -344,7 +391,7 @@ def combine_sparse_matrices_columnwise(matrices: Sequence,
         all_row_labels = None
 
     # sort the column names
-    all_cols = np.array(sorted(all_cols))
+    all_cols = np.array(sorted(all_cols), dtype=dtype_cols)
     n_cols = len(all_cols)
 
     # iterate through the matrices and their corresponding column names

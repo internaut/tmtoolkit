@@ -7,6 +7,7 @@ from datetime import date
 import pytest
 import hypothesis.strategies as st
 from hypothesis import given
+from hypothesis.extra.numpy import arrays, array_shapes
 import numpy as np
 import pandas as pd
 from scipy.sparse import coo_matrix, isspmatrix_csr
@@ -17,7 +18,7 @@ from tmtoolkit.utils import (pickle_data, unpickle_file, flatten_list, greedy_pa
                              mat2d_window_from_indices, combine_sparse_matrices_columnwise, path_split, read_text_file,
                              linebreaks_win2unix, split_func_args, empty_chararray, as_chararray, merge_dicts,
                              merge_sets, sample_dict, enable_logging, set_logging_level, disable_logging, dict2df,
-                             applychain)
+                             applychain, indices_of_matches, chararray_elem_size)
 
 PRINTABLE_ASCII_CHARS = [chr(c) for c in range(32, 127)]
 
@@ -144,6 +145,41 @@ def test_as_chararray(x, as_numpy_array):
     assert res.ndim == 1
     assert np.issubdtype(res.dtype, 'str')
     assert res.tolist() == list(map(str, x_orig))
+
+
+@given(x=st.lists(st.text()),
+       as_numpy_array=st.booleans())
+def test_chararray_elem_size(x, as_numpy_array):
+    if as_numpy_array:
+        x = as_chararray(x)
+        assert chararray_elem_size(x) == max(1, np.max(np.char.str_len(x))) if len(x) > 0 else 1
+    else:
+        with pytest.raises(ValueError):
+            chararray_elem_size(x)
+
+
+@given(a=arrays(int, array_shapes(min_dims=1, max_dims=1), elements=st.integers(-5, 5)),
+       b=arrays(int, array_shapes(min_dims=1, max_dims=1), elements=st.integers(-5, 5), unique=True),
+       b_is_sorted=st.booleans(),
+       check_a_in_b=st.booleans())
+def test_indices_of_matches(a, b, b_is_sorted, check_a_in_b):
+    if not check_a_in_b:
+        a = a[np.in1d(a, b)]
+
+    if b_is_sorted:
+        b = np.sort(b)
+
+    if check_a_in_b and np.any(~np.in1d(a, b)):
+        with pytest.raises(ValueError):
+            indices_of_matches(a, b, b_is_sorted=b_is_sorted, check_a_in_b=check_a_in_b)
+    else:
+        ind = indices_of_matches(a, b, b_is_sorted=b_is_sorted, check_a_in_b=check_a_in_b)
+        assert isinstance(ind, np.ndarray)
+        assert ind.shape == a.shape
+
+        matched = b[ind]
+        assert matched.shape == a.shape
+        assert np.all(matched == a)
 
 
 @given(data=st.dictionaries(keys=st.text(string.ascii_letters, min_size=1), values=st.integers(), max_size=10),

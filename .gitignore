@@ -18,3 +18,4 @@ examples/data/*.pickle
 .Rhistory
 doc/source/data/corpus_norm.pickle
 .coverage
+examples/data/aclImdb_v1.tar.gz

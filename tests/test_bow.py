@@ -1,12 +1,15 @@
+from importlib.util import find_spec
+
 import numpy as np
 import pandas as pd
 import pytest
-from hypothesis import settings, given, strategies as st
+from hypothesis import given, strategies as st
+from scipy import sparse
 from scipy.sparse import coo_matrix, csr_matrix, issparse
 
 from ._testtools import strategy_dtm
 
-from tmtoolkit import bow
+from tmtoolkit import bow, utils
 
 try:
     import gensim
@@ -14,8 +17,11 @@ try:
 except ImportError:
     GENSIM_INSTALLED = False
 
+TEXTPROC_DEP_INSTALLED = not any(find_spec(pkg) is None for pkg in ('spacy', 'bidict', 'loky'))
+
 pytestmark = [pytest.mark.filterwarnings("ignore:divide by zero"),   # happens due to generated data by hypothesis
               pytest.mark.filterwarnings("ignore:invalid value")]
+
 
 @given(
     dtm=strategy_dtm(),
@@ -625,3 +631,191 @@ def test_dtm_and_vocab_to_gensim_corpus_and_dict(dtm, matrix_type, as_gensim_dic
         assert isinstance(id2word, gensim.corpora.Dictionary)
     else:
         assert isinstance(id2word, dict)
+
+
+@given(add_k_smoothing=st.floats(-1, 1),
+       binary_counts=st.booleans())
+def test_naivebayes_on_dtm(add_k_smoothing, binary_counts):
+    dtm = np.array([[0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0],
+                    [1, 0, 1, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0],
+                    [1, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1],
+                    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+                    [0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 1, 0, 1, 0, 0, 0, 1, 0, 2, 0]], dtype=int)
+    docs = ['d1', 'd2', 'd3', 'd4', 'd5']
+    vocab = ['and',
+             'boring',
+             'energy',
+             'entirely',
+             'few',
+             'film',
+             'fun',
+             'just',
+             'lacks',
+             'laughs',
+             'most',
+             'no',
+             'of',
+             'plain',
+             'powerful',
+             'predictable',
+             'summer',
+             'surprises',
+             'the',
+             'very']
+
+    classes_docs = {'neg': ['d1', 'd2', 'd3'], 'pos': ['d4', 'd5']}
+
+    hash_fn = lambda t: t
+
+    nb = _test_naivebayes(add_k_smoothing, binary_counts, False, (dtm, docs, vocab), classes_docs,
+                          expected_vocab=vocab,
+                          hash_fn=hash_fn)
+
+    if nb:
+        dtm_mat2 = np.array([[0, 0, 1, 1, 0, 0, 0],
+                             [0, 0, 0, 0, 0, 1, 1],
+                             [1, 1, 0, 0, 1, 0, 0]], dtype=int)
+        docs2 = ['d1', 'd2', 'd3-neutral']
+        vocab2 = ['and', 'bad', 'boring', 'extremely', 'good', 'interesting', 'very']
+        classes_docs2 = {'neg': ['d1'], 'pos': ['d2'], 'neutral': ['d3-neutral']}
+
+        _test_naivebayes_update(nb, (dtm_mat2, docs2, vocab2), classes_docs2,
+                                expected_vocab_set=set(vocab) | set(vocab2),
+                                hash_fn=hash_fn)
+
+
+@given(add_k_smoothing=st.floats(-1, 1),
+       binary_counts=st.booleans(),
+       tokens_as_hashes=st.booleans())
+def test_naivebayes_on_corpus(add_k_smoothing, binary_counts, tokens_as_hashes):
+    if not TEXTPROC_DEP_INSTALLED:
+        pytest.skip('gensim not installed')
+
+    from tmtoolkit.corpus import Corpus, vocabulary
+    from spacy.strings import hash_string
+
+    corp = Corpus({'d1': 'just plain boring',
+                   'd2': 'entirely predictable and lacks energy',
+                   'd3': 'no surprises and very few laughs',
+                   'd4': 'very powerful',
+                   'd5': 'the most fun film of the summer'},
+                  language='en')
+
+    if tokens_as_hashes:
+        hash_fn = hash_string
+    else:
+        hash_fn = lambda t: t
+
+    classes_docs = {'neg': ['d1', 'd2', 'd3'], 'pos': ['d4', 'd5']}
+    vocab = vocabulary(corp, tokens_as_hashes=tokens_as_hashes)
+
+    corp_test_doc = Corpus({'test': 'OOV fun'}, language='en')
+
+    nb = _test_naivebayes(add_k_smoothing, binary_counts, tokens_as_hashes, corp, classes_docs,
+                          expected_vocab=vocab,
+                          hash_fn=hash_fn,
+                          test_doc=corp_test_doc['test'])
+
+    if nb:
+        corp2 = Corpus({'d1': 'extremely boring',
+                        'd2': 'very interesting',
+                        'd3-neutral': 'good and bad'},
+                       language='en')
+
+        classes_docs2 = {'neg': ['d1'], 'pos': ['d2'], 'neutral': ['d3-neutral']}
+        vocab2 = vocabulary(corp2, tokens_as_hashes=tokens_as_hashes)
+
+        _test_naivebayes_update(nb, corp2, classes_docs2,
+                                expected_vocab_set=set(vocab) | set(vocab2),
+                                hash_fn=hash_fn)
+
+
+def _test_naivebayes(add_k_smoothing, binary_counts, tokens_as_hashes, data, classes_docs, expected_vocab, hash_fn,
+                     test_doc=None):
+    h = hash_fn
+
+    if add_k_smoothing < 0:
+        with pytest.raises(ValueError):
+            bow.NaiveBayesClassifier(add_k_smoothing=add_k_smoothing, binary_counts=binary_counts,
+                                     tokens_as_hashes=tokens_as_hashes)
+
+        return None
+    else:
+        nb = bow.NaiveBayesClassifier(add_k_smoothing=add_k_smoothing, binary_counts=binary_counts,
+                                      tokens_as_hashes=tokens_as_hashes)
+        assert nb.n_trained_docs == 0
+
+        with pytest.raises(ValueError):   # models needs to be fitted before
+            assert nb.predict(h('fun'))
+        with pytest.raises(ValueError):   # models needs to be fitted before
+            assert nb.prob(h('fun'))
+        with pytest.raises(ValueError):   # models needs to be fitted before
+            assert nb.update(data, classes_docs)
+
+        assert isinstance(nb.fit(data, classes_docs), bow.NaiveBayesClassifier)
+        assert isinstance(nb.token_counts_, sparse.csr_matrix)
+        assert nb.token_counts_.shape == (len(classes_docs), len(expected_vocab))
+        assert set(nb.classes_) == set(classes_docs.keys())
+        assert set(nb.vocab_) == set(expected_vocab)
+        assert nb.prior_.shape == (len(classes_docs), )
+        assert nb.n_trained_docs == sum(len(docs) for docs in classes_docs.values())
+
+        pred = nb.predict(h('fun'))
+        assert pred == 'pos'
+        assert pred == nb.predict([h('fun')])
+        assert pred == nb.predict([h('fun')], return_prob=0)
+
+        pred = nb.predict(h('fun'), return_prob=1)
+        assert isinstance(pred, tuple) and len(pred) == 2
+        pred_lbl, pred_p = pred
+        assert pred_lbl == 'pos'
+        assert isinstance(pred_p, float) and 0 <= pred_p <= 1
+
+        pred = nb.predict(h('fun'), return_prob=2)
+        assert isinstance(pred, tuple) and len(pred) == 2
+        pred_lbl, pred_logp = pred
+        assert pred_lbl == 'pos'
+        assert isinstance(pred_logp, float) and pred_logp <= 0
+
+        assert nb.predict(h('fun')) == nb.predict([h('some-OOV-token'), h('fun')])
+
+        logp = nb.prob(h('fun'))
+        assert isinstance(logp, np.ndarray)
+        assert logp.shape == (len(classes_docs), )
+        assert np.all(logp <= 0)
+        assert nb.classes_[np.argmax(logp)] == 'pos'
+
+        p = nb.prob(h('fun'), log=False)
+        assert isinstance(p, np.ndarray)
+        assert p.shape == (len(classes_docs), )
+        assert np.all((p >= 0) & (p <= 1))
+        assert nb.classes_[np.argmax(p)] == 'pos'
+
+        for c in ([], ['pos']):
+            p = nb.prob(h('fun'), classes=c, log=False)
+            assert isinstance(p, np.ndarray)
+            assert p.shape == (len(c), )
+
+        if test_doc is not None:
+            assert nb.predict(h('fun')) == nb.predict(test_doc)
+
+        return nb
+
+
+def _test_naivebayes_update(nb, data, classes_docs, expected_vocab_set, hash_fn):
+    h = hash_fn
+    expected_classes_set = set(nb.classes_) | set(classes_docs.keys())
+
+    assert isinstance(nb.update(data, classes_docs), bow.NaiveBayesClassifier)
+    assert isinstance(nb.token_counts_, sparse.csr_matrix)
+    assert nb.token_counts_.shape == (len(expected_classes_set), len(expected_vocab_set))
+    assert set(nb.classes_) == expected_classes_set
+    assert set(nb.vocab_) == expected_vocab_set
+    assert nb.prior_.shape == (len(expected_classes_set),)
+
+    neutral_tokens = np.array([h(t) for t in ['good', 'and', 'bad']])
+    neutral_counts = nb.token_counts_[np.array(nb.classes_) == 'neutral',
+                                      utils.indices_of_matches(neutral_tokens, nb.vocab_)]
+    assert np.all(neutral_counts == 1)
+
+    assert nb.token_counts_[np.array(nb.classes_) == 'neg', nb.vocab_ == h('extremely')][0][0] == 1

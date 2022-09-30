@@ -1212,7 +1212,8 @@ def print_summary(docs: Corpus,
 
 
 def dtm(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None, as_table: bool = False,
-        dtype: Optional[Union[str, np.dtype]] = None, return_doc_labels: bool = False, return_vocab: bool = False) \
+        tokens_as_hashes: bool = False, dtype: Optional[Union[str, np.dtype]] = None,
+        return_doc_labels: bool = False, return_vocab: bool = False) \
         -> Union[csr_matrix,
                  pd.DataFrame,
                  Tuple[Union[csr_matrix, pd.DataFrame], List[str]],
@@ -1230,6 +1231,8 @@ def dtm(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None, as_t
     :param docs: a Corpus object
     :param select: if not None, this can be a single string or a sequence of strings specifying a subset of `docs`
     :param as_table: return result as dense pandas DataFrame
+    :param tokens_as_hashes: if True, return token type hashes (integers) instead of textual representations (strings)
+                             in the vocabulary
     :param dtype: use a specific matrix dtype; otherwise dtype will be uint32
     :param return_doc_labels: if True, additionally return sorted document labels that correspond to the rows of the
                               document-term matrix
@@ -1249,7 +1252,7 @@ def dtm(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None, as_t
 
     select = _single_str_to_set(select)
     logger.debug('getting tokens')
-    tokens = doc_tokens(docs, select=select)
+    tokens = doc_tokens(docs, tokens_as_hashes=tokens_as_hashes, select=select)
 
     if logger.isEnabledFor(logging.INFO):
         logger.info(f'generating sparse DTM with {len(tokens)} documents and '
@@ -1259,14 +1262,15 @@ def dtm(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None, as_t
         logger.debug('generating sparse DTM')
         res = _sparse_dtms(_paralleltask(docs, tokens=tokens))
         w_dtms, w_doc_labels, w_vocab = zip(*res)
-        dtm, vocab, dtm_doc_labels = combine_sparse_matrices_columnwise(w_dtms, w_vocab, w_doc_labels)
+        dtm, vocab, dtm_doc_labels = combine_sparse_matrices_columnwise(
+            w_dtms, w_vocab, w_doc_labels, dtype_cols='uint64' if tokens_as_hashes else 'str')
         # sort according to document labels
         dtm = dtm[np.argsort(dtm_doc_labels), :]
         doc_labels = np.sort(dtm_doc_labels)
     else:
         logger.debug('empty corpus')
         dtm = csr_matrix((0, 0), dtype=dtype or 'int32')   # empty sparse matrix
-        vocab = empty_chararray()
+        vocab = np.array([], dtype='uint64') if tokens_as_hashes else empty_chararray()
         doc_labels = empty_chararray()
 
     logger.debug('generating result')

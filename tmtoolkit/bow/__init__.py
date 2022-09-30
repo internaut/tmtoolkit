@@ -6,3 +6,4 @@ the BoW model.
 """
 
 from . import bow_stats, dtm
+from ._naivebayes import NaiveBayesClassifier
