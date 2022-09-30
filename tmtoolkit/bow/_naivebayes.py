@@ -9,7 +9,7 @@ class.
 from __future__ import annotations
 
 from importlib.util import find_spec
-from typing import Optional, List, Union, Dict, Tuple, Sequence
+from typing import Optional, List, Union, Dict, Tuple, Sequence, Any
 
 import numpy as np
 from scipy import sparse
@@ -54,7 +54,7 @@ class NaiveBayesClassifier:
         self.token_counts_: Optional[sparse.csr_matrix] = None
 
         # the list of classes this model was trained on
-        self.classes_: Optional[List[str]] = None
+        self.classes_: Optional[List[Any]] = None
 
         # the size of each class in `self.classes_` (i.e. num. of documents in each class)
         self.class_sizes_: Optional[np.ndarray] = None
@@ -86,7 +86,7 @@ class NaiveBayesClassifier:
             return np.sum(self.class_sizes_)
 
     def fit(self, data: Union[Corpus, Tuple[Union[sparse.csr_matrix, np.ndarray], Sequence, Sequence]],
-            classes_docs: Dict[str, Union[list, tuple, np.ndarray]]) -> NaiveBayesClassifier:
+            classes_docs: Dict[Any, Union[list, tuple, np.ndarray]]) -> NaiveBayesClassifier:
         """
         Fit this naive bayes model using a :class:`~tmtoolkit.corpus.Corpus` object and a dict `classes_docs` that
         maps classes to document labels.
@@ -118,7 +118,7 @@ class NaiveBayesClassifier:
         return self
 
     def update(self, data: Union[Corpus, Tuple[Union[sparse.csr_matrix, np.ndarray], Sequence, Sequence]],
-               classes_docs: Dict[str, Union[list, tuple, np.ndarray]]) -> NaiveBayesClassifier:
+               classes_docs: Dict[Any, Union[list, tuple, np.ndarray]]) -> NaiveBayesClassifier:
 
         self._check_fitted()
 
@@ -172,7 +172,7 @@ class NaiveBayesClassifier:
         return self
 
     def predict(self, tok: Union[StrOrInt, List[StrOrInt], Tuple[StrOrInt, ...], np.ndarray, Document],
-                return_prob: int = 0) -> Union[str, Tuple[str, float]]:
+                return_prob: int = 0) -> Union[Any, Tuple[Any, float]]:
         """
         Predict the most likely class for a :class:~`tmtoolkit.corpus.Document` object or sequence of tokens `tok`.
         Dismisses all tokens in `tok` that are not present in the trained vocabulary.
@@ -202,7 +202,7 @@ class NaiveBayesClassifier:
             return c_max
 
     def prob(self, tok: Union[StrOrInt, List[StrOrInt], Tuple[StrOrInt, ...], np.ndarray, Document],
-             classes: Optional[Union[List[str], Tuple[str, ...]]] = None, log: bool = True) -> np.ndarray:
+             classes: Optional[Union[List[Any], Tuple[Any, ...]]] = None, log: bool = True) -> np.ndarray:
         """
         Return the probability of a :class:~`tmtoolkit.corpus.Document` object or sequence of tokens `tok` for each
         class in `classes` or for all classes of this model if `classes` is None. Dismisses all tokens in `tok` that are
@@ -270,7 +270,7 @@ class NaiveBayesClassifier:
         return np.array(probs)
 
     def _prepare_passed_data(self, data: Union[Corpus, Tuple[Union[sparse.csr_matrix, np.ndarray], Sequence, Sequence]],
-                             classes_docs: Dict[str, Union[list, tuple, np.ndarray]]) \
+                             classes_docs: Dict[Any, Union[list, tuple, np.ndarray]]) \
             -> Tuple[sparse.csr_matrix, List[str], List[str]]:
         if not classes_docs:
             raise ValueError('at least one class must be given in `classes_docs`')
@@ -293,7 +293,7 @@ class NaiveBayesClassifier:
 
     @staticmethod
     def _generate_token_counts(dtm_mat: sparse.csr_matrix, doclbls: List[str],
-                               classes_docs: Dict[str, Union[list, tuple, np.ndarray]]) -> sparse.csr_matrix:
+                               classes_docs: Dict[Any, Union[list, tuple, np.ndarray]]) -> sparse.csr_matrix:
         # count the term frequencies per class
         doclbls_arr = np.array(doclbls)
         classes_dtm_rows = []
@@ -321,7 +321,7 @@ class NaiveBayesClassifier:
         return sparse.vstack(classes_dtm_rows)
 
     @staticmethod
-    def _class_sizes_array(classes_docs: Dict[str, Union[list, tuple, np.ndarray]]) -> np.ndarray:
+    def _class_sizes_array(classes_docs: Dict[Any, Union[list, tuple, np.ndarray]]) -> np.ndarray:
         return np.fromiter(map(len, classes_docs.values()), dtype='int', count=len(classes_docs))
 
     def _update_prior(self):
