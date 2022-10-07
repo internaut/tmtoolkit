@@ -1,10 +1,6 @@
 """
 N-gram models as in [JurafskyMartin2021]_. Mainly provides the :class:`NGramModel` class.
 
-TODO:
-
-- add tests
-
 .. [JurafskyMartin2021] Jurafsky, D. and Martin, J.H., 2021. Speech and Language Processing (3rd ed. draft). Online:
                         https://web.stanford.edu/~jurafsky/slp3/
 
@@ -174,7 +170,7 @@ class NGramModel:
             if return_prob == 0:
                 return None
             else:
-                return None, 1.0
+                return None, 1.0 if return_prob == 1 else 0.0
 
     def generate_sequence(self, given: Optional[Union[StrOrInt, Tuple[StrOrInt, ...], List[StrOrInt]]] = None,
                           backoff: bool = True, until_n: Optional[int] = None,
