@@ -199,6 +199,9 @@ class NGramModel:
         if not self.ngram_counts_:
             raise ValueError('the model needs to be fitted before calling this method')
 
+        if until_n is not None and until_n < 1:
+            raise ValueError('if `until_n` is given, it must be strictly positive')
+
         if not self.tokens_as_hashes and isinstance(until_token, int):
             until_token = SPECIAL_TOKENS[until_token]
 

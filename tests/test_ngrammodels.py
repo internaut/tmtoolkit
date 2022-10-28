@@ -131,11 +131,7 @@ def test_predict(textdata_en, corpus_en, fit_corpus, n, add_k_smoothing, keep_vo
     tokens_as_hashes = tokens_as_hashes and fit_corpus
     ng, full_vocab, ng_vocab = _fit_model(textdata_en, corpus_en, fit_corpus, n, add_k_smoothing, keep_vocab,
                                           tokens_as_hashes)
-
-    given_args = [None]
-    full_vocab_list = list(full_vocab)
-    for _ in range(100):
-        given_args.append(random.sample(full_vocab_list, random.randint(1, n)))
+    given_args = _generate_random_given_args(full_vocab, n)
 
     for g in given_args:
         if g is not None and len(g) < n-1:
@@ -163,6 +159,51 @@ def test_predict(textdata_en, corpus_en, fit_corpus, n, add_k_smoothing, keep_vo
                 assert isinstance(pred, str) or pred is None
 
 
+@given(fit_corpus=st.booleans(),
+       n=st.integers(1, 5),
+       add_k_smoothing=st.floats(0.0, 2.0),
+       keep_vocab=st.one_of(st.none(), st.integers(1, 100), st.floats(0.1, 1.0)),
+       tokens_as_hashes=st.booleans(),
+       backoff=st.booleans(),
+       until_n=st.integers(0, 20),   # always generate at most 20 tokens, otherwise runs endlessly
+       until_token=st.booleans())
+def test_generate_sequence(textdata_en, corpus_en, fit_corpus, n, add_k_smoothing, keep_vocab, tokens_as_hashes,
+                           backoff, until_n, until_token):
+    tokens_as_hashes = tokens_as_hashes and fit_corpus
+
+    if tokens_as_hashes:
+        special_tokens = set(SPECIAL_TOKENS.keys())
+    else:
+        special_tokens = set(SPECIAL_TOKENS.values())
+
+    ng, full_vocab, ng_vocab = _fit_model(textdata_en, corpus_en, fit_corpus, n, add_k_smoothing, keep_vocab,
+                                          tokens_as_hashes)
+    given_args = _generate_random_given_args(full_vocab, n)
+
+    if until_token and ng_vocab:
+        until_token = random.choice(list(ng_vocab))
+    else:
+        until_token = None
+
+    for g in given_args:
+        if until_n < 1:
+            with pytest.raises(ValueError):
+                list(ng.generate_sequence(g, backoff=backoff, until_n=until_n, until_token=until_token))
+        elif g is not None and len(g) < n-1:
+            with pytest.raises(ValueError):
+                list(ng.generate_sequence(g, backoff=backoff, until_n=until_n, until_token=until_token))
+        else:
+            res = list(ng.generate_sequence(g, backoff=backoff, until_n=until_n, until_token=until_token))
+
+            assert len(res) <= until_n
+            if len(res) < until_n and backoff:
+                assert until_token is not None
+                assert res[-1] == until_token
+
+            assert all(isinstance(t, int if tokens_as_hashes else str) for t in res)
+            assert all(t in ng_vocab | special_tokens for t in res)
+
+
 def _fit_model(textdata_en, corpus_en, fit_corpus, n, add_k_smoothing, keep_vocab, tokens_as_hashes):
     ng = NGramModel(n=n, add_k_smoothing=add_k_smoothing, keep_vocab=keep_vocab, tokens_as_hashes=tokens_as_hashes)
 
@@ -183,3 +224,12 @@ def _fit_model(textdata_en, corpus_en, fit_corpus, n, add_k_smoothing, keep_voca
     ng_vocab = {g[0] for g in ng.ngram_counts_.keys() if len(g) == 1} - special_tokens_set
 
     return ng, full_vocab, ng_vocab
+
+
+def _generate_random_given_args(full_vocab, n):
+    given_args = [None]
+    full_vocab_list = list(full_vocab)
+    for _ in range(100):
+        given_args.append(random.sample(full_vocab_list, random.randint(1, n)))
+
+    return given_args
