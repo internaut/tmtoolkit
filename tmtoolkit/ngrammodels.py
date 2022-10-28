@@ -101,6 +101,9 @@ class NGramModel:
         # count the tokens (unigrams)
         unigram_counts = Counter(t for s in unigram_sents for t in s)
 
+        # this is done before possible filtering when keep_vocab is set
+        self.n_unigrams_ = sum(unigram_counts.values())
+
         if self.keep_vocab is not None:
             # keep only the most frequent tokens in the vocabulary
             if isinstance(self.keep_vocab, float):
@@ -117,9 +120,8 @@ class NGramModel:
             # keep the full vocabulary
             keep_tok = None
 
-        # set vocab size and unigrams count
+        # set vocab size
         self.vocab_size_ = len(unigram_counts)
-        self.n_unigrams_ = sum(unigram_counts.values())
 
         # count n-grams
         self.ngram_counts_ = Counter()
