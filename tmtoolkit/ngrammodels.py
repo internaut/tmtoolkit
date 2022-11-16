@@ -353,11 +353,14 @@ class NGramModel:
         if s:
             if isinstance(s, tuple):
                 s = list(s)
+                to_tuple = True
+            else:
+                to_tuple = False
 
             # apply padding
             s_ = [start_symbol] * pad_l + s + [end_symbol] * pad_r
 
-            if isinstance(s, tuple):
+            if to_tuple:
                 return tuple(s_)
             else:
                 return s_
@@ -431,11 +434,20 @@ class NGramModel:
         else:       # x[:(self.n-1)] is the "given" sequence, i.e. the sequence before x[-1]
             d = self.ngram_counts_.get(x[:(self.n-1)], 0)
 
+        smooth_num = c + self.k
+        smooth_denom = d + self.k * self.vocab_size_
+
         if log:
-            p = math.log(c + self.k) - math.log(d + self.k * self.vocab_size_)
+            if smooth_num == 0:
+                p = float('-inf')
+            else:
+                p = math.log(smooth_num) - math.log(smooth_denom)
             assert 0 <= math.exp(p) <= 1, 'smoothed prob. must be in [0, 1] interval'
         else:
-            p = (c + self.k) / (d + self.k * self.vocab_size_)
+            if smooth_num == 0:
+                p = 0.0   # never mind the denominator
+            else:
+                p = smooth_num / smooth_denom
             assert 0 <= p <= 1, 'smoothed prob. must be in [0, 1] interval'
 
         return p

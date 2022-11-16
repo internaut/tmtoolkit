@@ -204,6 +204,41 @@ def test_generate_sequence(textdata_en, corpus_en, fit_corpus, n, add_k_smoothin
             assert all(t in ng_vocab | special_tokens for t in res)
 
 
+@given(fit_corpus=st.booleans(),
+       n=st.integers(1, 5),
+       add_k_smoothing=st.floats(0.0, 2.0),
+       keep_vocab=st.one_of(st.none(), st.integers(1, 100), st.floats(0.1, 1.0)),
+       tokens_as_hashes=st.booleans(),
+       log=st.booleans(),
+       pad_input=st.booleans())
+def test_prob(textdata_en, corpus_en, fit_corpus, n, add_k_smoothing, keep_vocab, tokens_as_hashes, log, pad_input):
+    tokens_as_hashes = tokens_as_hashes and fit_corpus
+    ng, full_vocab, ng_vocab = _fit_model(textdata_en, corpus_en, fit_corpus, n, add_k_smoothing, keep_vocab,
+                                          tokens_as_hashes)
+    given_args = _generate_random_given_args(full_vocab, 2 * n)
+    for x in given_args:
+        if x is None:
+            x = tuple()
+            g = None
+        else:
+            n_g = random.randint(0, min(n, len(x)))
+            x, g = x[n_g:], x[:n_g]
+
+            if len(g) == 0:
+                g = None
+
+        if len(x) == 0:
+            with pytest.raises(ValueError):
+                ng.prob(x, g, log=log, pad_input=pad_input)
+        else:
+            p = ng.prob(x, g, log=log, pad_input=pad_input)
+
+            if log:
+                assert p <= 0
+            else:
+                assert 0 <= p <= 1
+
+
 def _fit_model(textdata_en, corpus_en, fit_corpus, n, add_k_smoothing, keep_vocab, tokens_as_hashes):
     ng = NGramModel(n=n, add_k_smoothing=add_k_smoothing, keep_vocab=keep_vocab, tokens_as_hashes=tokens_as_hashes)
 
