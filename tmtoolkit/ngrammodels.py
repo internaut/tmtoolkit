@@ -316,8 +316,14 @@ class NGramModel:
         if self.vocab_size_ <= 0:
             raise ValueError('vocabulary must be non-empty')
 
-        log_p = self.prob(x, pad_input=pad_input)
-        return math.pow(math.exp(log_p), -1.0/self.vocab_size_)
+        log_p = self.prob(x, log=True, pad_input=pad_input)
+        if math.isclose(math.exp(log_p), 0.0):
+            return float('inf')
+        else:
+            try:
+                return math.pow(math.exp(log_p), -1.0/self.vocab_size_)
+            except OverflowError:
+                return float('inf')
 
     def pad_sequence(self, s: Union[Tuple[StrOrInt, ...], List[StrOrInt]], sides: str = 'both') \
             -> Union[Tuple[StrOrInt, ...], List[StrOrInt]]:

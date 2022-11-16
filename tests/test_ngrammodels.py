@@ -233,10 +233,35 @@ def test_prob(textdata_en, corpus_en, fit_corpus, n, add_k_smoothing, keep_vocab
         else:
             p = ng.prob(x, g, log=log, pad_input=pad_input)
 
+            assert isinstance(p, float)
+
             if log:
                 assert p <= 0
             else:
                 assert 0 <= p <= 1
+
+
+@given(fit_corpus=st.booleans(),
+       n=st.integers(1, 5),
+       add_k_smoothing=st.floats(0.0, 2.0),
+       keep_vocab=st.one_of(st.none(), st.integers(1, 100), st.floats(0.1, 1.0)),
+       tokens_as_hashes=st.booleans(),
+       pad_input=st.booleans())
+def test_perplexity(textdata_en, corpus_en, fit_corpus, n, add_k_smoothing, keep_vocab, tokens_as_hashes, pad_input):
+    tokens_as_hashes = tokens_as_hashes and fit_corpus
+    ng, full_vocab, ng_vocab = _fit_model(textdata_en, corpus_en, fit_corpus, n, add_k_smoothing, keep_vocab,
+                                          tokens_as_hashes)
+    given_args = _generate_random_given_args(full_vocab, 2 * n)
+    for x in given_args:
+        if x is None:
+            x = tuple()
+
+        if len(x) == 0:
+            with pytest.raises(ValueError):
+                ng.perplexity(x, pad_input=pad_input)
+        else:
+            perp = ng.perplexity(x, pad_input=pad_input)
+            assert isinstance(perp, float)
 
 
 def _fit_model(textdata_en, corpus_en, fit_corpus, n, add_k_smoothing, keep_vocab, tokens_as_hashes):
