@@ -1,10 +1,6 @@
 """
 N-gram models as in [JurafskyMartin2021]_. Mainly provides the :class:`NGramModel` class.
 
-TODO:
-
-- add tests
-
 .. [JurafskyMartin2021] Jurafsky, D. and Martin, J.H., 2021. Speech and Language Processing (3rd ed. draft). Online:
                         https://web.stanford.edu/~jurafsky/slp3/
 
@@ -105,6 +101,9 @@ class NGramModel:
         # count the tokens (unigrams)
         unigram_counts = Counter(t for s in unigram_sents for t in s)
 
+        # this is done before possible filtering when keep_vocab is set
+        self.n_unigrams_ = sum(unigram_counts.values())
+
         if self.keep_vocab is not None:
             # keep only the most frequent tokens in the vocabulary
             if isinstance(self.keep_vocab, float):
@@ -121,9 +120,8 @@ class NGramModel:
             # keep the full vocabulary
             keep_tok = None
 
-        # set vocab size and unigrams count
+        # set vocab size
         self.vocab_size_ = len(unigram_counts)
-        self.n_unigrams_ = sum(unigram_counts.values())
 
         # count n-grams
         self.ngram_counts_ = Counter()
@@ -174,7 +172,7 @@ class NGramModel:
             if return_prob == 0:
                 return None
             else:
-                return None, 1.0
+                return None, 1.0 if return_prob == 1 else 0.0
 
     def generate_sequence(self, given: Optional[Union[StrOrInt, Tuple[StrOrInt, ...], List[StrOrInt]]] = None,
                           backoff: bool = True, until_n: Optional[int] = None,
@@ -200,6 +198,9 @@ class NGramModel:
 
         if not self.ngram_counts_:
             raise ValueError('the model needs to be fitted before calling this method')
+
+        if until_n is not None and until_n < 1:
+            raise ValueError('if `until_n` is given, it must be strictly positive')
 
         if not self.tokens_as_hashes and isinstance(until_token, int):
             until_token = SPECIAL_TOKENS[until_token]
@@ -315,14 +316,20 @@ class NGramModel:
         if self.vocab_size_ <= 0:
             raise ValueError('vocabulary must be non-empty')
 
-        log_p = self.prob(x, pad_input=pad_input)
-        return math.pow(math.exp(log_p), -1.0/self.vocab_size_)
+        log_p = self.prob(x, log=True, pad_input=pad_input)
+        if math.isclose(math.exp(log_p), 0.0):
+            return float('inf')
+        else:
+            try:
+                return math.pow(math.exp(log_p), -1.0/self.vocab_size_)
+            except OverflowError:
+                return float('inf')
 
     def pad_sequence(self, s: Union[Tuple[StrOrInt, ...], List[StrOrInt]], sides: str = 'both') \
             -> Union[Tuple[StrOrInt, ...], List[StrOrInt]]:
         """
-        Prepend start sentence token(s) and/or append end sentence token(s) to a sequence of tokens `s`. If `s` is an
-        empty sequence don't apply padding.
+        Prepend start sentence token(s) and/or append end sentence token(s) of length n-1 to a sequence of tokens `s`.
+        If `s` is an empty sequence don't apply padding.
 
         :param s: sequence of tokens
         :param sides: either 'left', 'right' or 'both'
@@ -334,7 +341,7 @@ class NGramModel:
         if sides not in {'left', 'right', 'both'}:
             raise ValueError("`sides` must be either 'left', 'right' or 'both'")
 
-        pad = max(self.n - 1, 1)
+        pad = self.n - 1
 
         if sides in {'left', 'both'}:
             pad_l = pad
@@ -352,11 +359,14 @@ class NGramModel:
         if s:
             if isinstance(s, tuple):
                 s = list(s)
+                to_tuple = True
+            else:
+                to_tuple = False
 
             # apply padding
             s_ = [start_symbol] * pad_l + s + [end_symbol] * pad_r
 
-            if isinstance(s, tuple):
+            if to_tuple:
                 return tuple(s_)
             else:
                 return s_
@@ -369,11 +379,14 @@ class NGramModel:
     def convert_token_sequence(self, tok: Iterable[StrOrInt], collapse: Optional[str] = ' ') \
             -> Union[str, Tuple[StrOrInt, ...], List[StrOrInt]]:
         """
-        Convert a sequence of tokens `tok` to
+        Convert a sequence of tokens `tok` to a sequence of token strings if tokens in this model are given as hashes
+        (``self.tokens_as_hashes`` is True) or to a sequence of token hashes if tokens in this model are given as
+        strings (``self.tokens_as_hashes`` is False).
 
-        :param tok:
-        :param collapse:
-        :return:
+        :param tok: sequence of tokens to convert
+        :param collapse: collapse the resulting sequence to a string joined by this character (if output is a sequence
+                         of strings)
+        :return: sequence of converted tokens or string if `collapse` is True
         """
         if self.stringstore is None:
             raise ValueError('this method can only be used when this model was fit on a `Corpus` object or '
@@ -430,11 +443,20 @@ class NGramModel:
         else:       # x[:(self.n-1)] is the "given" sequence, i.e. the sequence before x[-1]
             d = self.ngram_counts_.get(x[:(self.n-1)], 0)
 
+        smooth_num = c + self.k
+        smooth_denom = d + self.k * self.vocab_size_
+
         if log:
-            p = math.log(c + self.k) - math.log(d + self.k * self.vocab_size_)
+            if smooth_num == 0:
+                p = float('-inf')
+            else:
+                p = math.log(smooth_num) - math.log(smooth_denom)
             assert 0 <= math.exp(p) <= 1, 'smoothed prob. must be in [0, 1] interval'
         else:
-            p = (c + self.k) / (d + self.k * self.vocab_size_)
+            if smooth_num == 0:
+                p = 0.0   # never mind the denominator
+            else:
+                p = smooth_num / smooth_denom
             assert 0 <= p <= 1, 'smoothed prob. must be in [0, 1] interval'
 
         return p
