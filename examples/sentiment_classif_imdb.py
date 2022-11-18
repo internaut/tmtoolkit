@@ -5,15 +5,15 @@ regression for sentiment classification.
 The data comes from [Maas2011]_, available at https://ai.stanford.edu/~amaas/data/sentiment/aclImdb_v1.tar.gz. It is
 not included in this repository, hence you need to download it from there.
 
-This examples requires that you have installed tmtoolkit with the recommended set of packages and have installed a
-German language model for spaCy:
+This examples requires that you have installed tmtoolkit with the recommended set of packages and have installed an
+English language model for spaCy:
 
     pip install -U "tmtoolkit[recommended]"
-    python -m tmtoolkit setup de
+    python -m tmtoolkit setup en
 
 For more information, see the installation instructions: https://tmtoolkit.readthedocs.io/en/latest/install.html
 
-Markus Konrad <markus.konrad@wzb.eu>
+Markus Konrad <post@mkonrad.net>
 Sep. 2022
 
 .. [Maas2011]  Andrew L. Maas, Raymond E. Daly, Peter T. Pham, Dan Huang, Andrew Y. Ng, and Christopher Potts. (2011).

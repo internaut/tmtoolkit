@@ -356,7 +356,6 @@ def test_convert_token_sequence(textdata_en, corpus_en, fit_corpus, n, add_k_smo
             ng.convert_token_sequence([], collapse=collapse)
 
 
-
 def _fit_model(textdata_en, corpus_en, fit_corpus, n, add_k_smoothing, keep_vocab, tokens_as_hashes):
     ng = NGramModel(n=n, add_k_smoothing=add_k_smoothing, keep_vocab=keep_vocab, tokens_as_hashes=tokens_as_hashes)
 

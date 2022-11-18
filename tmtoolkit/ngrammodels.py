@@ -485,4 +485,3 @@ class NGramModel:
             len_g = len(given)
 
         return probs
-
