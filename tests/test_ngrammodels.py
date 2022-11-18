@@ -264,6 +264,53 @@ def test_perplexity(textdata_en, corpus_en, fit_corpus, n, add_k_smoothing, keep
             assert isinstance(perp, float)
 
 
+@given(fit_corpus=st.booleans(),
+       n=st.integers(1, 5),
+       add_k_smoothing=st.floats(0.0, 2.0),
+       keep_vocab=st.one_of(st.none(), st.integers(1, 100), st.floats(0.1, 1.0)),
+       tokens_as_hashes=st.booleans(),
+       sides=st.sampled_from(['left', 'right', 'both', 'fail']),
+       pass_list=st.booleans())
+def test_pad_sequence(textdata_en, corpus_en, fit_corpus, n, add_k_smoothing, keep_vocab, tokens_as_hashes, sides,
+                      pass_list):
+    tokens_as_hashes = tokens_as_hashes and fit_corpus
+    ng, full_vocab, ng_vocab = _fit_model(textdata_en, corpus_en, fit_corpus, n, add_k_smoothing, keep_vocab,
+                                          tokens_as_hashes)
+    given_args = _generate_random_given_args(full_vocab, 2 * n)
+    for x in given_args:
+        if x is None:
+            with pytest.raises(ValueError):
+                ng.pad_sequence(x, sides=sides)
+            x = tuple()
+
+        if pass_list:
+            seqtype = list
+        else:
+            seqtype = tuple
+        x = seqtype(x)
+
+        if sides == 'fail':
+            with pytest.raises(ValueError):
+                ng.pad_sequence(x, sides=sides)
+        else:
+            xpad = ng.pad_sequence(x, sides=sides)
+
+            assert isinstance(xpad, seqtype)
+
+            if x:
+                if sides in {'left', 'both'}:
+                    xleft = xpad[:(n-1)]
+                    assert xleft == seqtype([SENT_START if tokens_as_hashes else SPECIAL_TOKENS[SENT_START]] * (n-1))
+                if sides in {'right', 'both'}:
+                    if n == 1:
+                        xright = seqtype()
+                    else:
+                        xright = xpad[-(n-1):]
+                    assert xright == seqtype([SENT_END if tokens_as_hashes else SPECIAL_TOKENS[SENT_END]] * (n-1))
+            else:
+                assert len(xpad) == 0
+
+
 def _fit_model(textdata_en, corpus_en, fit_corpus, n, add_k_smoothing, keep_vocab, tokens_as_hashes):
     ng = NGramModel(n=n, add_k_smoothing=add_k_smoothing, keep_vocab=keep_vocab, tokens_as_hashes=tokens_as_hashes)
 

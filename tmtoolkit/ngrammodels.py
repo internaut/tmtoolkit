@@ -328,8 +328,8 @@ class NGramModel:
     def pad_sequence(self, s: Union[Tuple[StrOrInt, ...], List[StrOrInt]], sides: str = 'both') \
             -> Union[Tuple[StrOrInt, ...], List[StrOrInt]]:
         """
-        Prepend start sentence token(s) and/or append end sentence token(s) to a sequence of tokens `s`. If `s` is an
-        empty sequence don't apply padding.
+        Prepend start sentence token(s) and/or append end sentence token(s) of length `n-1` to a sequence of tokens `s`.
+        If `s` is an empty sequence don't apply padding.
 
         :param s: sequence of tokens
         :param sides: either 'left', 'right' or 'both'
@@ -341,7 +341,7 @@ class NGramModel:
         if sides not in {'left', 'right', 'both'}:
             raise ValueError("`sides` must be either 'left', 'right' or 'both'")
 
-        pad = max(self.n - 1, 1)
+        pad = self.n - 1
 
         if sides in {'left', 'both'}:
             pad_l = pad
