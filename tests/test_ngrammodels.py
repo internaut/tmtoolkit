@@ -311,6 +311,52 @@ def test_pad_sequence(textdata_en, corpus_en, fit_corpus, n, add_k_smoothing, ke
                 assert len(xpad) == 0
 
 
+@given(fit_corpus=st.booleans(),
+       n=st.integers(1, 5),
+       add_k_smoothing=st.floats(0.0, 2.0),
+       keep_vocab=st.one_of(st.none(), st.integers(1, 100), st.floats(0.1, 1.0)),
+       tokens_as_hashes=st.booleans(),
+       collapse=st.one_of(st.none(), st.sampled_from([' ', '_'])))
+def test_convert_token_sequence(textdata_en, corpus_en, fit_corpus, n, add_k_smoothing, keep_vocab, tokens_as_hashes,
+                                collapse):
+    tokens_as_hashes = tokens_as_hashes and fit_corpus
+    ng, full_vocab, ng_vocab = _fit_model(textdata_en, corpus_en, fit_corpus, n, add_k_smoothing, keep_vocab,
+                                          tokens_as_hashes)
+
+    if fit_corpus:
+        given_args = _generate_random_given_args(full_vocab, 2 * n)
+        for x in given_args:
+            if x is None:
+                x = []
+
+            xconv = ng.convert_token_sequence(x, collapse=collapse)
+
+            if collapse and tokens_as_hashes:
+                assert isinstance(xconv, str)
+                if len(x) > 1:
+                    assert collapse in xconv
+                elif len(x) == 0:
+                    assert xconv == ''
+            else:
+                if isinstance(x, list):
+                    assert isinstance(xconv, list)
+                elif isinstance(x, tuple):
+                    assert isinstance(xconv, tuple)
+                assert len(xconv) == len(x)
+
+                if tokens_as_hashes:
+                    assert all(isinstance(t, str) for t in xconv)
+                else:
+                    assert all(isinstance(t, int) for t in xconv)
+
+            for t in x:
+                assert ng.stringstore[t] in xconv
+    else:
+        with pytest.raises(ValueError):
+            ng.convert_token_sequence([], collapse=collapse)
+
+
+
 def _fit_model(textdata_en, corpus_en, fit_corpus, n, add_k_smoothing, keep_vocab, tokens_as_hashes):
     ng = NGramModel(n=n, add_k_smoothing=add_k_smoothing, keep_vocab=keep_vocab, tokens_as_hashes=tokens_as_hashes)
 

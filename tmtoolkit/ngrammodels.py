@@ -328,7 +328,7 @@ class NGramModel:
     def pad_sequence(self, s: Union[Tuple[StrOrInt, ...], List[StrOrInt]], sides: str = 'both') \
             -> Union[Tuple[StrOrInt, ...], List[StrOrInt]]:
         """
-        Prepend start sentence token(s) and/or append end sentence token(s) of length `n-1` to a sequence of tokens `s`.
+        Prepend start sentence token(s) and/or append end sentence token(s) of length n-1 to a sequence of tokens `s`.
         If `s` is an empty sequence don't apply padding.
 
         :param s: sequence of tokens
@@ -379,11 +379,14 @@ class NGramModel:
     def convert_token_sequence(self, tok: Iterable[StrOrInt], collapse: Optional[str] = ' ') \
             -> Union[str, Tuple[StrOrInt, ...], List[StrOrInt]]:
         """
-        Convert a sequence of tokens `tok` to
+        Convert a sequence of tokens `tok` to a sequence of token strings if tokens in this model are given as hashes
+        (``self.tokens_as_hashes`` is True) or to a sequence of token hashes if tokens in this model are given as
+        strings (``self.tokens_as_hashes`` is False).
 
-        :param tok:
-        :param collapse:
-        :return:
+        :param tok: sequence of tokens to convert
+        :param collapse: collapse the resulting sequence to a string joined by this character (if output is a sequence
+                         of strings)
+        :return: sequence of converted tokens or string if `collapse` is True
         """
         if self.stringstore is None:
             raise ValueError('this method can only be used when this model was fit on a `Corpus` object or '
