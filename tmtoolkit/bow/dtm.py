@@ -3,8 +3,11 @@ Functions for creating a document-term matrix (DTM) and some compatibility funct
 
 .. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
 """
+from importlib.util import find_spec
+from typing import Optional, List
 
 import numpy as np
+from scipy import sparse
 from scipy.sparse import coo_matrix, issparse
 
 import pandas as pd
@@ -176,3 +179,26 @@ def dtm_and_vocab_to_gensim_corpus_and_dict(dtm, vocab, as_gensim_dictionary=Tru
         return corpus, gensim.corpora.dictionary.Dictionary().from_corpus(corpus, id2word)
     else:
         return corpus, id2word
+
+
+#%% R interoperability
+
+def save_dtm_to_rds(path: str,
+                    dtmat: sparse.csr_matrix,
+                    doc_labels: Optional[List[str]] = None,
+                    vocab: Optional[List[str]] = None):
+    try:
+        from ..utils import robjects, save_rds, sparsemat_to_r
+    except ImportError:
+        raise RuntimeError('tmtoolkit must be installed with optional "rinterop" dependency')
+
+    r_data = {
+        'dtm': sparsemat_to_r(dtmat)
+    }
+
+    if doc_labels is not None:
+        r_data['doc_labels'] = robjects.vectors.StrVector(doc_labels)
+    if vocab is not None:
+        r_data['vocab'] = robjects.vectors.StrVector(vocab)
+
+    save_rds(robjects.vectors.ListVector(r_data), path)

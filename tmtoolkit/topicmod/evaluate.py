@@ -357,7 +357,7 @@ def metric_coherence_gensim(measure, topic_word_distrib=None, gensim_model=None,
     try:
         import gensim
     except ImportError:
-        raise ValueError('package `gensim` must be installed for `coherence_gensim` metric')
+        raise RuntimeError('package `gensim` must be installed for `coherence_gensim` metric')
 
     if measure == 'u_mass' and dtm is None and gensim_corpus is None:
         raise ValueError('document-term-matrix `dtm` or Gensim corpus `gensim_corpus` must be provided for measure '

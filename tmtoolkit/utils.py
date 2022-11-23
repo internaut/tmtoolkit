@@ -10,6 +10,7 @@ import os
 import pickle
 import random
 from collections import Counter
+from importlib.util import find_spec
 from inspect import signature
 from typing import Union, List, Any, Optional, Sequence, Dict, Callable, Tuple, Iterable
 
@@ -618,3 +619,30 @@ def split_func_args(fn: Callable, args: Dict[str, Any]) -> Tuple[Dict[str, Any],
 
     return {k: v for k, v in args.items() if k in fn_argnames},\
            {k: v for k, v in args.items() if k not in fn_argnames}
+
+
+#%% R interoperability
+
+
+if find_spec('rpy2') is not None:
+    import rpy2.robjects as robjects
+    from rpy2.robjects.packages import importr
+    from rpy2.robjects.numpy2ri import numpy2rpy
+    from rpy2.robjects.methods import RS4
+
+    r_matrix = importr('Matrix')
+    save_rds = robjects.r['saveRDS']
+
+    def sparsemat_to_r(s: sparse.spmatrix) -> RS4:
+        args = {}
+        if sparse.isspmatrix_csr(s):
+            args['j'] = numpy2rpy(s.indices+1)   # row indices
+        else:
+            if not sparse.isspmatrix_csc(s):
+                s = s.tocsc(s)
+            args['i'] = numpy2rpy(s.indices+1)   # column indices
+
+        args['p'] = numpy2rpy(s.indptr)  # index pointer
+        args['x'] = numpy2rpy(s.data)    # non-zero items
+
+        return r_matrix.sparseMatrix(**args, dims=list(s.shape))
