@@ -10,9 +10,9 @@ from hypothesis import given
 from hypothesis.extra.numpy import arrays, array_shapes
 import numpy as np
 import pandas as pd
-from scipy.sparse import coo_matrix, isspmatrix_csr
+from scipy import sparse
 
-from ._testtools import strategy_dtm_small
+from ._testtools import strategy_dtm_small, strategy_2d_array
 
 from tmtoolkit.utils import (pickle_data, unpickle_file, flatten_list, greedy_partitioning,
                              mat2d_window_from_indices, combine_sparse_matrices_columnwise, path_split, read_text_file,
@@ -389,7 +389,7 @@ def test_greedy_partitioning(elems_dict, k):
 
 
 def test_combine_sparse_matrices_columnwise():
-    m1 = coo_matrix(np.array([
+    m1 = sparse.coo_matrix(np.array([
         [1, 0, 3],
         [0, 2, 0],
     ]))
@@ -397,7 +397,7 @@ def test_combine_sparse_matrices_columnwise():
     cols1 = list('CAD')
     rows1 = [4, 0]   # row labels. can be integers!
     
-    m2 = coo_matrix(np.array([
+    m2 = sparse.coo_matrix(np.array([
         [0, 0, 1, 2],
         [3, 4, 5, 6],
         [2, 1, 0, 0],
@@ -406,20 +406,20 @@ def test_combine_sparse_matrices_columnwise():
     cols2 = list('DBCA')
     rows2 = [3, 1, 2]
 
-    m3 = coo_matrix(np.array([
+    m3 = sparse.coo_matrix(np.array([
         [9, 8],
     ]))
 
     cols3 = list('BD')
 
-    m4 = coo_matrix(np.array([
+    m4 = sparse.coo_matrix(np.array([
         [9],
         [8]
     ]))
 
     cols4 = list('A')
 
-    m5 = coo_matrix((0, 0), dtype=int)
+    m5 = sparse.coo_matrix((0, 0), dtype=int)
 
     cols5 = []
 
@@ -474,14 +474,14 @@ def test_combine_sparse_matrices_columnwise():
     # matrices 1 and 2, no row re-ordering
     res, res_cols = combine_sparse_matrices_columnwise((m1, m2), (cols1, cols2))
     
-    assert isspmatrix_csr(res)
+    assert sparse.isspmatrix_csr(res)
     assert res.shape == (5, 4)
     assert np.all(res.A == expected_1_2)
     assert np.array_equal(res_cols, np.array(list('ABCD')))
 
     # matrices 1 and 2, re-order rows
     res, res_cols, res_rows = combine_sparse_matrices_columnwise((m1, m2), (cols1, cols2), (rows1, rows2))
-    assert isspmatrix_csr(res)
+    assert sparse.isspmatrix_csr(res)
     assert res.shape == (5, 4)
     assert np.all(res.A == expected_1_2_rows_sorted)
     assert np.array_equal(res_cols, np.array(list('ABCD')))
@@ -490,7 +490,7 @@ def test_combine_sparse_matrices_columnwise():
     # matrices 1 to 5, no row re-ordering
     res, res_cols = combine_sparse_matrices_columnwise((m1, m2, m3, m4, m5), (cols1, cols2, cols3, cols4, cols5))
 
-    assert isspmatrix_csr(res)
+    assert sparse.isspmatrix_csr(res)
     assert np.all(res.A == expected_1_5)
     assert np.array_equal(res_cols, np.array(list('ABCD')))
 
@@ -506,3 +506,59 @@ def test_split_func_args(testfn, testargs, expargs1, expargs2):
     args1, args2 = res
     assert args1 == expargs1
     assert args2 == expargs2
+
+
+@given(m=strategy_2d_array(float, -10, 10),
+       to_int=st.booleans(),
+       sparsetype=st.sampled_from(['csc', 'csr', 'coo']))
+def test_sparsemat_rinterop(m, to_int, sparsetype):
+    try:
+        from tmtoolkit.utils import sparsemat_from_r, sparsemat_to_r, RS4
+    except ImportError:
+        pytest.skip('packages for R interoperability not installed')
+        return
+
+    if to_int:
+        m = m.astype('int')
+
+    spmatfn = getattr(sparse, f'{sparsetype}_matrix')
+
+    s = spmatfn(m)
+    rs = sparsemat_to_r(s)
+    assert isinstance(rs, RS4)
+    s_ = sparsemat_from_r(rs)
+    assert isinstance(s_, sparse.csc_matrix)
+    assert str(s_.dtype).startswith('float')   # can't recover type, is always float
+
+    if to_int:
+        m_ = s_.todense().astype('int')
+    else:
+        m_ = s_.todense()
+
+    assert np.allclose(m, m_)
+
+
+@given(m=strategy_2d_array(float, -10, 10),
+       to_int=st.booleans())
+def test_mat_rinterop(m, to_int):
+    try:
+        from tmtoolkit.utils import mat_from_r, mat_to_r, robjects
+    except ImportError:
+        pytest.skip('packages for R interoperability not installed')
+        return
+
+    if to_int:
+        m = m.astype('int')
+
+    rm = mat_to_r(m)
+    m_ = mat_from_r(rm)
+    assert isinstance(m_, np.ndarray)
+
+    if to_int:
+        assert isinstance(rm, robjects.vectors.IntMatrix)
+        assert np.issubdtype(m_.dtype, 'int32') or np.issubdtype(m_.dtype, 'int64')
+    else:
+        assert isinstance(rm, robjects.vectors.FloatMatrix)
+        assert np.issubdtype(m_.dtype, 'float32') or np.issubdtype(m_.dtype, 'float64')
+
+    assert np.allclose(m, m_)

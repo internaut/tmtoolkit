@@ -3,7 +3,7 @@ from importlib.util import find_spec
 import numpy as np
 import pandas as pd
 import pytest
-from hypothesis import given, strategies as st
+from hypothesis import given, strategies as st, HealthCheck, settings
 from scipy import sparse
 from scipy.sparse import coo_matrix, csr_matrix, issparse
 
@@ -16,6 +16,12 @@ try:
     GENSIM_INSTALLED = True
 except ImportError:
     GENSIM_INSTALLED = False
+
+try:
+    import rpy2
+    RPY2_INSTALLED = True
+except ImportError:
+    RPY2_INSTALLED = False
 
 TEXTPROC_DEP_INSTALLED = not any(find_spec(pkg) is None for pkg in ('spacy', 'bidict', 'loky'))
 
@@ -631,6 +637,58 @@ def test_dtm_and_vocab_to_gensim_corpus_and_dict(dtm, matrix_type, as_gensim_dic
         assert isinstance(id2word, gensim.corpora.Dictionary)
     else:
         assert isinstance(id2word, dict)
+
+
+@settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
+@given(dtm=strategy_dtm(),
+       format=st.sampled_from(['dense', 'csc', 'csr', 'coo']),
+       save_doc_labels=st.booleans(),
+       save_vocab=st.booleans())
+def test_dtm_rds(tmp_path, dtm, format, save_doc_labels, save_vocab):
+    if not RPY2_INSTALLED:
+        pytest.skip('packages for R interoperability not installed')
+        return
+
+    if format == 'dense':
+        dtm_ = dtm
+    else:
+        spmatfn = getattr(sparse, f'{format}_matrix')
+        dtm_ = spmatfn(dtm)
+
+    if save_doc_labels:
+        doc_labels = ['d%d' % i for i in range(dtm.shape[0])]
+    else:
+        doc_labels = None
+
+    if save_vocab:
+        vocab = ['t%d' % i for i in range(dtm.shape[1])]
+    else:
+        vocab = None
+
+    rdsfile = tmp_path / 'test_dtm_rds.rds'
+    bow.dtm.save_dtm_to_rds(rdsfile, dtm_, doc_labels=doc_labels, vocab=vocab)
+    res = bow.dtm.read_dtm_from_rds(rdsfile)
+
+    assert isinstance(res, dict)
+    assert set(res.keys()) <= {'dtm', 'doc_labels', 'vocab'}
+    assert 'dtm' in res
+
+    if format == 'dense':
+        res_dtm = res['dtm']
+    else:
+        res_dtm = res['dtm'].todense().astype('int')
+
+    assert np.all(dtm == res_dtm)
+
+    if save_doc_labels:
+        assert res['doc_labels'] == doc_labels
+    else:
+        assert 'doc_labels' not in res
+
+    if save_vocab:
+        assert res['vocab'] == vocab
+    else:
+        assert 'vocab' not in res
 
 
 @given(add_k_smoothing=st.floats(-1, 1),

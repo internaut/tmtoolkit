@@ -627,13 +627,47 @@ def split_func_args(fn: Callable, args: Dict[str, Any]) -> Tuple[Dict[str, Any],
 if find_spec('rpy2') is not None:
     import rpy2.robjects as robjects
     from rpy2.robjects.packages import importr
-    from rpy2.robjects.numpy2ri import numpy2rpy
+    from rpy2.robjects.numpy2ri import numpy2rpy, rpy2py_floatvector, rpy2py_intvector
     from rpy2.robjects.methods import RS4
 
     r_matrix = importr('Matrix')
     save_rds = robjects.r['saveRDS']
+    read_rds = robjects.r['readRDS']
+
+    def mat_to_r(m: np.ndarray) -> Union[robjects.vectors.FloatMatrix, robjects.vectors.IntMatrix]:
+        """
+        Convert a NumPy matrix `m` to an R matrix.
+
+        :param m: NumPy matrix
+        :return: rpy2 float or integer matrix
+        """
+
+        if m.ndim != 2:
+            raise ValueError('`m` must be matrix, i.e. a NumPy array with ndim = 2')
+
+        return robjects.r.matrix(data=numpy2rpy(m), nrow=m.shape[0])
+
+
+    def mat_from_r(m: Union[robjects.vectors.FloatMatrix, robjects.vectors.IntMatrix]) -> np.ndarray:
+        """
+        Convert an R matrix `m` to a NumPy matrix.
+
+        :param m: rpy2 float or integer matrix
+        :return: NumPy matrix of respective type
+        """
+        if isinstance(m, robjects.vectors.IntMatrix):
+            return rpy2py_intvector(m)
+        else:
+            return rpy2py_floatvector(m)
+
 
     def sparsemat_to_r(s: sparse.spmatrix) -> RS4:
+        """
+        Convert a SciPy sparse matrix `s` to an R sparse matrix.
+
+        :param s: sparse matrix
+        :return: rpy2 RS4 object of the sparse matrix in "CSC" format
+        """
         args = {}
         if sparse.isspmatrix_csr(s):
             args['j'] = numpy2rpy(s.indices+1)   # row indices
@@ -643,6 +677,30 @@ if find_spec('rpy2') is not None:
             args['i'] = numpy2rpy(s.indices+1)   # column indices
 
         args['p'] = numpy2rpy(s.indptr)  # index pointer
-        args['x'] = numpy2rpy(s.data)    # non-zero items
+        if len(s.data) > 0:
+            # non-zero elements
+            args['x'] = robjects.FloatVector(s.data)
 
         return r_matrix.sparseMatrix(**args, dims=list(s.shape))
+
+
+    def sparsemat_from_r(s: RS4) -> sparse.csc_matrix:
+        """
+        Convert an R sparse matrix `s` in "CSC" format to a SciPy sparse matrix in "CSC" format.
+
+        .. note:: The returned matrix has always the data type float, even when `s` was originally constructed from
+                  integers.
+
+        :param s: rpy2 RS4 object with sparse matrix in "CSC" format
+        :return: SciPy sparse matrix in "CSC" format
+        """
+        i = rpy2py_floatvector(s.do_slot('i'))   # column indices
+        p = rpy2py_floatvector(s.do_slot('p'))   # index pointer
+        try:
+            # data in slot "x" is always stored as float -> can't recover integer matrices
+            x = rpy2py_floatvector(s.do_slot('x'))   # non-zero elements
+        except LookupError:
+            # sparse matrix has no non-zero elements
+            x = np.array([], dtype='float')
+
+        return sparse.csc_matrix((x, i, p), shape=tuple(s.do_slot('Dim')))
