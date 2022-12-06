@@ -669,26 +669,24 @@ def test_dtm_rds(tmp_path, dtm, format, save_doc_labels, save_vocab):
     bow.dtm.save_dtm_to_rds(rdsfile, dtm_, doc_labels=doc_labels, vocab=vocab)
     res = bow.dtm.read_dtm_from_rds(rdsfile)
 
-    assert isinstance(res, dict)
-    assert set(res.keys()) <= {'dtm', 'doc_labels', 'vocab'}
-    assert 'dtm' in res
+    assert isinstance(res, tuple)
+    assert len(res) == 3
+    res_dtm, res_doc_labels, res_vocab = res
 
-    if format == 'dense':
-        res_dtm = res['dtm']
-    else:
-        res_dtm = res['dtm'].todense().astype('int')
+    if format != 'dense':
+        res_dtm = res_dtm.todense().astype('int')
 
     assert np.all(dtm == res_dtm)
 
     if save_doc_labels:
-        assert res['doc_labels'] == doc_labels
+        assert res_doc_labels == doc_labels
     else:
-        assert 'doc_labels' not in res
+        assert res_doc_labels is None
 
     if save_vocab:
-        assert res['vocab'] == vocab
+        assert res_vocab == vocab
     else:
-        assert 'vocab' not in res
+        assert res_vocab is None
 
 
 @given(add_k_smoothing=st.floats(-1, 1),

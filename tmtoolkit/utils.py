@@ -634,38 +634,75 @@ if find_spec('rpy2') is not None:
     save_rds = robjects.r['saveRDS']
     read_rds = robjects.r['readRDS']
 
-    def mat_to_r(m: np.ndarray) -> Union[robjects.vectors.FloatMatrix, robjects.vectors.IntMatrix]:
+    def _dimnames_from_r_mat(x: Union[robjects.vectors.FloatMatrix, robjects.vectors.IntMatrix, RS4]) \
+            -> Tuple[Optional[List[str]], Optional[List[str]]]:
+        rownames = None
+        colnames = None
+
+        try:
+            if hasattr(x, 'dimnames'):
+                dimnames = x.dimnames
+            else:
+                dimnames = list(x.do_slot('Dimnames'))
+            rowslot, colslot = dimnames
+            if rowslot:
+                rownames = list(rowslot)
+            if colslot:
+                colnames = list(colslot)
+        except LookupError:
+            pass
+
+        return rownames, colnames
+
+
+    def mat_to_r(m: np.ndarray, rownames: Optional[List[str]] = None, colnames: Optional[List[str]] = None) \
+            -> Union[robjects.vectors.FloatMatrix, robjects.vectors.IntMatrix]:
         """
         Convert a NumPy matrix `m` to an R matrix.
 
         :param m: NumPy matrix
+        :param rownames: optional list of strings for row names
+        :param colnames: optional list of strings for column names
         :return: rpy2 float or integer matrix
         """
 
         if m.ndim != 2:
             raise ValueError('`m` must be matrix, i.e. a NumPy array with ndim = 2')
 
-        return robjects.r.matrix(data=numpy2rpy(m), nrow=m.shape[0])
+        return robjects.r.matrix(data=numpy2rpy(m), nrow=m.shape[0], dimnames=[rownames or [], colnames or []])
 
 
-    def mat_from_r(m: Union[robjects.vectors.FloatMatrix, robjects.vectors.IntMatrix]) -> np.ndarray:
+    def mat_from_r(m: Union[robjects.vectors.FloatMatrix, robjects.vectors.IntMatrix],
+                   return_dimnames: bool = False) \
+            -> Union[np.ndarray, Tuple[np.ndarray, Optional[List[str]]], Optional[List[str]]]:
         """
         Convert an R matrix `m` to a NumPy matrix.
 
         :param m: rpy2 float or integer matrix
+        :param return_dimnames: if True, return row and column names as string lists
         :return: NumPy matrix of respective type
         """
         if isinstance(m, robjects.vectors.IntMatrix):
-            return rpy2py_intvector(m)
+            pymat = rpy2py_intvector(m)
         else:
-            return rpy2py_floatvector(m)
+            pymat = rpy2py_floatvector(m)
+
+        if return_dimnames:
+            rownames, colnames = _dimnames_from_r_mat(m)
+            return pymat, rownames, colnames
+        else:
+            return pymat
 
 
-    def sparsemat_to_r(s: sparse.spmatrix) -> RS4:
+    def sparsemat_to_r(s: sparse.spmatrix,
+                       rownames: Optional[List[str]] = None,
+                       colnames: Optional[List[str]] = None) -> RS4:
         """
         Convert a SciPy sparse matrix `s` to an R sparse matrix.
 
         :param s: sparse matrix
+        :param rownames: optional list of strings for row names
+        :param colnames: optional list of strings for column names
         :return: rpy2 RS4 object of the sparse matrix in "CSC" format
         """
         args = {}
@@ -681,10 +718,13 @@ if find_spec('rpy2') is not None:
             # non-zero elements
             args['x'] = robjects.FloatVector(s.data)
 
-        return r_matrix.sparseMatrix(**args, dims=list(s.shape))
+        return r_matrix.sparseMatrix(**args,
+                                     dims=list(s.shape),
+                                     dimnames=[rownames or [], colnames or []])
 
 
-    def sparsemat_from_r(s: RS4) -> sparse.csc_matrix:
+    def sparsemat_from_r(s: RS4, return_dimnames: bool = False) \
+            -> Union[sparse.csc_matrix, Tuple[sparse.csc_matrix, Optional[List[str]]], Optional[List[str]]]:
         """
         Convert an R sparse matrix `s` in "CSC" format to a SciPy sparse matrix in "CSC" format.
 
@@ -692,7 +732,9 @@ if find_spec('rpy2') is not None:
                   integers.
 
         :param s: rpy2 RS4 object with sparse matrix in "CSC" format
-        :return: SciPy sparse matrix in "CSC" format
+        :param return_dimnames: if True, return row and column names as string lists
+        :return: SciPy sparse matrix in "CSC" format; if return_dimnames is True, return a triplet (sparse matrix,
+                 row names, column names)
         """
         i = rpy2py_floatvector(s.do_slot('i'))   # column indices
         p = rpy2py_floatvector(s.do_slot('p'))   # index pointer
@@ -703,4 +745,10 @@ if find_spec('rpy2') is not None:
             # sparse matrix has no non-zero elements
             x = np.array([], dtype='float')
 
-        return sparse.csc_matrix((x, i, p), shape=tuple(s.do_slot('Dim')))
+        m = sparse.csc_matrix((x, i, p), shape=tuple(s.do_slot('Dim')))
+
+        if return_dimnames:
+            rownames,colnames = _dimnames_from_r_mat(s)
+            return m, rownames, colnames
+        else:
+            return m

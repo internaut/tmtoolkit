@@ -510,8 +510,10 @@ def test_split_func_args(testfn, testargs, expargs1, expargs2):
 
 @given(m=strategy_2d_array(float, -10, 10),
        to_int=st.booleans(),
-       sparsetype=st.sampled_from(['csc', 'csr', 'coo']))
-def test_sparsemat_rinterop(m, to_int, sparsetype):
+       sparsetype=st.sampled_from(['csc', 'csr', 'coo']),
+       pass_dimnames=st.sampled_from(['none', 'rows', 'cols', 'both']),
+       return_dimnames=st.booleans())
+def test_sparsemat_rinterop(m, to_int, sparsetype, pass_dimnames, return_dimnames):
     try:
         from tmtoolkit.utils import sparsemat_from_r, sparsemat_to_r, RS4
     except ImportError:
@@ -524,9 +526,25 @@ def test_sparsemat_rinterop(m, to_int, sparsetype):
     spmatfn = getattr(sparse, f'{sparsetype}_matrix')
 
     s = spmatfn(m)
-    rs = sparsemat_to_r(s)
+
+    rownames = None
+    colnames = None
+    if pass_dimnames in {'rows', 'both'}:
+        rownames = [f'r{i}' for i in range(m.shape[0])]
+    if pass_dimnames in {'cols', 'both'}:
+        colnames = [f'r{i}' for i in range(m.shape[1])]
+
+    rs = sparsemat_to_r(s, rownames=rownames, colnames=colnames)
     assert isinstance(rs, RS4)
-    s_ = sparsemat_from_r(rs)
+    s_ = sparsemat_from_r(rs, return_dimnames=return_dimnames)
+
+    if return_dimnames:
+        assert isinstance(s_, tuple)
+        assert len(s_) == 3
+        s_, returned_rows, returned_cols = s_
+        assert returned_rows == rownames
+        assert returned_cols == colnames
+
     assert isinstance(s_, sparse.csc_matrix)
     assert str(s_.dtype).startswith('float')   # can't recover type, is always float
 
@@ -539,8 +557,10 @@ def test_sparsemat_rinterop(m, to_int, sparsetype):
 
 
 @given(m=strategy_2d_array(float, -10, 10),
-       to_int=st.booleans())
-def test_mat_rinterop(m, to_int):
+       to_int=st.booleans(),
+       pass_dimnames=st.sampled_from(['none', 'rows', 'cols', 'both']),
+       return_dimnames=st.booleans())
+def test_mat_rinterop(m, to_int, pass_dimnames, return_dimnames):
     try:
         from tmtoolkit.utils import mat_from_r, mat_to_r, robjects
     except ImportError:
@@ -550,8 +570,23 @@ def test_mat_rinterop(m, to_int):
     if to_int:
         m = m.astype('int')
 
-    rm = mat_to_r(m)
-    m_ = mat_from_r(rm)
+    rownames = None
+    colnames = None
+    if pass_dimnames in {'rows', 'both'}:
+        rownames = [f'r{i}' for i in range(m.shape[0])]
+    if pass_dimnames in {'cols', 'both'}:
+        colnames = [f'r{i}' for i in range(m.shape[1])]
+
+    rm = mat_to_r(m, rownames=rownames, colnames=colnames)
+    m_ = mat_from_r(rm, return_dimnames=return_dimnames)
+
+    if return_dimnames:
+        assert isinstance(m_, tuple)
+        assert len(m_) == 3
+        m_, returned_rows, returned_cols = m_
+        assert returned_rows == rownames
+        assert returned_cols == colnames
+
     assert isinstance(m_, np.ndarray)
 
     if to_int:

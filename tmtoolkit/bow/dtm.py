@@ -5,7 +5,7 @@ Functions for creating a document-term matrix (DTM) and some compatibility funct
 """
 from importlib.util import find_spec
 from pathlib import Path
-from typing import Optional, List, Union, Dict
+from typing import Optional, List, Union, Dict, Tuple
 
 import numpy as np
 from scipy import sparse
@@ -185,12 +185,13 @@ def dtm_and_vocab_to_gensim_corpus_and_dict(dtm, vocab, as_gensim_dictionary=Tru
 #%% R interoperability
 
 def save_dtm_to_rds(path: Union[str, Path],
-                    dtmat: Union[np.ndarray, sparse.csr_matrix],
+                    dtmat: Union[np.ndarray, sparse.spmatrix],
                     doc_labels: Optional[List[str]] = None,
                     vocab: Optional[List[str]] = None) -> None:
     """
     Save a document-term matrix along with document labels and/or vocabulary to an RDS file that can be imported with
-    R. The RDS file will contain an R ``list`` with up to three named items: ``$dtm``, ``$doc_labels`` and ``$vocab``.
+    R. The RDS file will contain an R ``sparseMatrix`` or ``matrix`` with optional row and column names according to
+    `doc_labels` and `vocab`.
 
     .. note:: It's highly recommended to store a sparse matrix when dealing with a large text corpus. Note that the
               sparse matrix is always represented with float values, so you may need to convert it to integer values
@@ -211,38 +212,30 @@ def save_dtm_to_rds(path: Union[str, Path],
     if isinstance(path, Path):
         path = str(path)
 
+    matargs = dict(rownames=doc_labels, colnames=vocab)
+
     if isinstance(dtmat, np.ndarray):
         # dense matrix
-        r_data = {
-            'dtm': mat_to_r(dtmat)
-        }
+        rmat = mat_to_r(dtmat, **matargs)
     else:
         # sparse matrix
-        r_data = {
-            'dtm': sparsemat_to_r(dtmat)
-        }
+        rmat = sparsemat_to_r(dtmat, **matargs)
 
-    if doc_labels is not None:
-        r_data['doc_labels'] = robjects.vectors.StrVector(doc_labels)
-    if vocab is not None:
-        r_data['vocab'] = robjects.vectors.StrVector(vocab)
-
-    save_rds(robjects.vectors.ListVector(r_data), path)
+    save_rds(rmat, path)
 
 
-def read_dtm_from_rds(path: Union[str, Path]) -> Dict[str, Union[sparse.csr_matrix, np.ndarray, List[str]]]:
+def read_dtm_from_rds(path: Union[str, Path]) \
+        -> Tuple[Union[sparse.csc_matrix, np.ndarray], Optional[List[str]], Optional[List[str]]]:
     """
     Load a document-term matrix with optional document labels and/or vocabulary from an RDS file. The RDS file must
-    contain an R ``list`` with up to three named items: ``$dtm``, ``$doc_labels`` and ``$vocab``, where ``$dtm`` is
-    a sparse or dense matrix and ``$doc_labels`` as well as ``$vocab`` are string vectors.
+    contain a R ``sparseMatrix`` or ``matrix``.
 
     .. note:: It's highly recommended to store a sparse matrix when dealing with a large text corpus.
 
     .. seealso:: Use :func:`~tmtoolkit.bow.dtm.save_dtm_to_rds` to save a document-term matrix to an RDS file.
 
     :param path: path to RDS file
-    :return: dictionary with items ``"dtm"`` (sparse or dense document-term matrix),
-             ``"doc_labels"`` (document labels list - optional) and ``"vocab"`` (vocabulary list - optional)
+    :return: triplet with sparse or dense document-term matrix, optional document labels list, optional vocabulary list
     """
     try:
         from ..utils import robjects, read_rds, sparsemat_from_r, mat_from_r
@@ -252,15 +245,8 @@ def read_dtm_from_rds(path: Union[str, Path]) -> Dict[str, Union[sparse.csr_matr
     if isinstance(path, Path):
         path = str(path)
 
-    rdat = read_rds(path)
-    pydat = {}
-    for k, v in rdat.items():
-        if k == 'dtm':
-            if isinstance(v, (robjects.vectors.FloatMatrix, robjects.vectors.IntMatrix)):
-                pydat[k] = mat_from_r(v)
-            else:
-                pydat[k] = sparsemat_from_r(v)
-        elif k == 'doc_labels' or k == 'vocab':
-            pydat[k] = list(v)
-
-    return pydat
+    v = read_rds(path)
+    if isinstance(v, (robjects.vectors.FloatMatrix, robjects.vectors.IntMatrix)):
+        return mat_from_r(v, return_dimnames=True)
+    else:
+        return sparsemat_from_r(v, return_dimnames=True)
