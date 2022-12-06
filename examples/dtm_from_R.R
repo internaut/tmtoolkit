@@ -1,5 +1,13 @@
+#
+# Example to show how to export a document-term matrix from R in order to load it into Python/tmtoolkit.
+# Python code is available in dtm_to_R.py.
+#
+# Markus Konrad <post@mkonrad.net>
+# Dec. 2022
+#
+
 library(Matrix)       # for sparseMatrix
-library(tm)
+library(tm)           # for DocumentTermMatrix
 
 
 data("crude")
