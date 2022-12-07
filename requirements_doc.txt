@@ -3,4 +3,4 @@
 # installs doc dependencies from ./setup.py, and the package itself,
 # in editable mode for development
 
--e .[doc]
+-e .[textproc,doc]
