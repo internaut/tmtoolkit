@@ -111,6 +111,7 @@ For additional features, you can install further packages using the following in
 - ``pip install -U tmtoolkit[gensim]`` for topic modeling and additional evaluation metrics with Gensim
 - ``pip install -U tmtoolkit[topic_modeling_eval_extra]`` for topic modeling evaluation metrics ``griffiths_2004`` and
   ``held_out_documents_wallach09`` (see further information below)
+- ``pip install -U tmtoolkit[rinterop]`` for interoperability with R (see `R interop. chapter <rinterop.ipynb>`_)
 
 For LDA evaluation metrics ``griffiths_2004`` and ``held_out_documents_wallach09`` it is necessary to install
 `gmpy2 <https://github.com/aleaxit/gmpy>`_ for multiple-precision arithmetic. This in turn requires installing some C
