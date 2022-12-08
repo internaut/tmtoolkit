@@ -12,6 +12,7 @@ Most functions also accept NumPy arrays instead of lists / tuples.
 
 .. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
 """
+from __future__ import annotations
 
 import itertools
 import math
@@ -19,15 +20,31 @@ import re
 import unicodedata
 from collections import Counter
 from collections.abc import Mapping
+from copy import copy
 from functools import partial
 from html.parser import HTMLParser
-from typing import Union, List, Any, Optional, Callable, Iterable, Dict, Sequence, Set
+from typing import Union, List, Any, Optional, Callable, Iterable, Dict, Sequence, Set, Tuple
 
 import globre
 import numpy as np
+from bidict import bidict
 
 from .types import StrOrInt
 from .utils import flatten_list, empty_chararray
+
+
+OOV = 0
+DOC_START = 5
+DOC_END = 6
+SENT_START = 10
+SENT_END = 11
+SPECIAL_TOKENS = bidict({
+    DOC_START: '<d>',
+    DOC_END: '</d>',
+    SENT_START: '<s>',
+    SENT_END: '</s>',
+    OOV: '<oov>'
+})
 
 
 #%% functions that operate on single string tokens or texts
@@ -146,6 +163,47 @@ def strip_tags(value: str) -> str:
 
 
 #%% functions that operate on token sequences
+
+
+def pad_sequence(s: Union[Tuple[StrOrInt, ...], List[StrOrInt], np.ndarray], left: int, right: int,
+                 left_symbol: StrOrInt, right_symbol: StrOrInt, skip_empty: bool = True) \
+        -> Union[Tuple[StrOrInt, ...], List[StrOrInt], np.ndarray]:
+    """
+    Prepend and/or append symbols to token sequence `s`.
+
+    :param s: sequence of tokens
+    :param left: number of symbols to add to the start
+    :param right: number of symbols to add to the end
+    :param left_symbol: symbol to add to the start
+    :param right_symbol: symbol to add to the end
+    :param skip_empty: if set to True and `s` is an empty sequence, don't apply padding
+    :return: padded sequence of same type as input sequence
+    """
+    if left < 0:
+        raise ValueError('`left` must be positive or zero')
+    if right < 0:
+        raise ValueError('`right` must be positive or zero')
+
+    if (skip_empty and len(s) == 0) or (left == 0 and right == 0):
+        return copy(s)
+
+    prepend = [left_symbol] * left
+    append = [right_symbol] * right
+
+    if isinstance(s, tuple):
+        return tuple(prepend) + s + tuple(append)
+    elif isinstance(s, np.ndarray):
+        if np.issubdtype(s.dtype, 'str'):
+            to_dtype = 'str'
+        else:
+            to_dtype = s.dtype
+
+        return np.concatenate((np.array(prepend, dtype=to_dtype),
+                               s,
+                               np.array(append, dtype=to_dtype)),
+                              dtype=to_dtype)
+    else:   # list
+        return prepend + s + append
 
 
 def unique_chars(tokens: Iterable[str]) -> Set[str]:
@@ -404,7 +462,7 @@ def token_collocations(sentences: List[List[StrOrInt]], threshold: Optional[floa
     return res
 
 
-def token_match(pattern: Any, tokens: Union[List[str], np.ndarray],
+def token_match(pattern: Any, tokens: Union[List[StrOrInt], np.ndarray],
                 match_type: str = 'exact', ignore_case: bool = False, glob_method: str = 'match',
                 inverse: bool = False) -> np.ndarray:
     """
@@ -742,7 +800,7 @@ def token_ngrams(tokens: Sequence, n: int, join: bool = True, join_str: str = ' 
 
 def index_windows_around_matches(matches: np.ndarray, left: int, right: int,
                                  flatten: bool = False, remove_overlaps: bool = True) \
-        -> Union[List[List[int]], np.ndarray]:
+        -> Union[List[List[int]], List[np.ndarray], np.ndarray]:
     """
     Take a boolean 1D array `matches` of length N and generate an array of indices, where each occurrence of a True
     value in the boolean vector at index i generates a sequence of the form:

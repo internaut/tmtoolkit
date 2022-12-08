@@ -1216,8 +1216,8 @@ def dtm(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None, as_t
         return_doc_labels: bool = False, return_vocab: bool = False) \
         -> Union[csr_matrix,
                  pd.DataFrame,
-                 Tuple[Union[csr_matrix, pd.DataFrame], List[str]],
-                 Tuple[Union[csr_matrix, pd.DataFrame], List[str], List[str]]]:
+                 Tuple[Union[csr_matrix, pd.DataFrame], List[StrOrInt]],
+                 Tuple[Union[csr_matrix, pd.DataFrame], List[StrOrInt], List[StrOrInt]]]:
     """
     Generate and return a sparse document-term matrix (or alternatively a dataframe) of shape
     ``(n_docs, n_vocab)`` where ``n_docs`` is the number of documents and ``n_vocab`` is the vocabulary size.
@@ -1498,6 +1498,51 @@ def kwic_table(docs: Corpus, search_tokens: Any, context_size: Union[int, Tuple[
             cols.append(with_attr)
 
         return pd.DataFrame(dict(zip(cols, [[] for _ in range(len(cols))])))
+
+
+def token_cooccurrence(docs: Corpus,
+                       context_size: Union[int, Tuple[int, int], List[int]],
+                       tokens: Optional[Collection[StrOrInt]] = None,
+                       select: Optional[Union[str, Collection[str]]] = None,
+                       by_attr: Optional[str] = None,   # TODO
+                       as_table: bool = False,
+                       tokens_as_hashes: bool = False,
+                       min_val: int = 1,
+                       proportions: Proportion = Proportion.NO) \
+        -> Union[Tuple[csr_matrix, List[StrOrInt]], pd.DataFrame]:
+    if isinstance(context_size, int):
+        context_size = (context_size, context_size)
+    elif not isinstance(context_size, (list, tuple)):
+        raise ValueError('`context_size` must be integer or list/tuple')
+
+    if len(context_size) != 2:
+        raise ValueError('`context_size` must be list/tuple of length 2')
+
+    if any(s < 0 for s in context_size) or all(s == 0 for s in context_size):
+        raise ValueError('`context_size` must contain non-negative values and at least one strictly positive value')
+
+    left, right = context_size
+
+    if tokens:
+        tokens = sorted(set(tokens))
+    else:
+        tokens = vocabulary(docs, select=select, tokens_as_hashes=tokens_as_hashes, sort=True)
+
+    matchdata = _match_against(docs, by_attr, select=select,
+                               default=docs.custom_token_attrs_defaults.get(by_attr, None))
+
+    for t in tokens:
+        doc_matches = _token_pattern_matches(matchdata, t)
+        for matches in doc_matches.values():
+            ind_windows = index_windows_around_matches(matches, left, right, remove_overlaps=False)
+
+            for win in ind_windows:
+                # add padding option to index_windows_around_matches?
+                # count occurrences in win
+                pass
+
+
+
 
 
 #%% Corpus I/O

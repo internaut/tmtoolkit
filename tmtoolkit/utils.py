@@ -3,6 +3,7 @@ Misc. utility functions.
 
 .. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
 """
+from __future__ import annotations
 
 import codecs
 import logging
