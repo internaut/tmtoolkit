@@ -18,7 +18,7 @@ from tmtoolkit.utils import (pickle_data, unpickle_file, flatten_list, greedy_pa
                              mat2d_window_from_indices, combine_sparse_matrices_columnwise, path_split, read_text_file,
                              linebreaks_win2unix, split_func_args, empty_chararray, as_chararray, merge_dicts,
                              merge_sets, sample_dict, enable_logging, set_logging_level, disable_logging, dict2df,
-                             applychain, indices_of_matches, chararray_elem_size)
+                             applychain, indices_of_matches, chararray_elem_size, check_context_size)
 
 PRINTABLE_ASCII_CHARS = [chr(c) for c in range(32, 127)]
 
@@ -506,6 +506,36 @@ def test_split_func_args(testfn, testargs, expargs1, expargs2):
     args1, args2 = res
     assert args1 == expargs1
     assert args2 == expargs2
+
+
+@given(cs=st.lists(st.integers(-1, 5), min_size=0, max_size=3),
+       container=st.sampled_from([list, tuple]),
+       dtype=st.sampled_from([int, float]))
+def test_check_context_size(cs, container, dtype):
+    cs = container(map(dtype, cs))
+    if len(cs) == 1:
+        cs = cs[0]
+
+    if isinstance(cs, float):
+        with pytest.raises(ValueError, match='`context_size` must be integer or list/tuple'):
+            check_context_size(cs)
+    elif isinstance(cs, (tuple, list)):
+        if len(cs) != 2:
+            with pytest.raises(ValueError, match='`context_size` must be list/tuple of length 2'):
+                check_context_size(cs)
+        elif dtype is float or min(cs) < 0 or all(s == 0 for s in cs):
+            with pytest.raises(ValueError, match='^`context_size` must contain'):
+                check_context_size(cs)
+        else:
+            res = check_context_size(cs)
+            assert res == tuple(cs)
+    else:
+        if dtype is float or cs <= 0:
+            with pytest.raises(ValueError, match='^`context_size` must contain'):
+                check_context_size(cs)
+        else:
+            res = check_context_size(cs)
+            assert res == (cs, cs)
 
 
 @given(m=strategy_2d_array(float, -10, 10),

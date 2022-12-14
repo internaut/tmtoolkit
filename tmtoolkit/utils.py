@@ -622,6 +622,32 @@ def split_func_args(fn: Callable, args: Dict[str, Any]) -> Tuple[Dict[str, Any],
            {k: v for k, v in args.items() if k not in fn_argnames}
 
 
+def check_context_size(context_size: Union[int, Tuple[int, int], List[int]]) -> Tuple[int, int]:
+    """
+    Check a context size for validity. The context size must be given as integer for a symmetric context size or as
+    tuple (left, right) and must contain at least one strictly positive value.
+
+    :param context_size: either scalar int or tuple/list (left, right) -- number of surrounding tokens; if scalar,
+                         then it is a symmetric surrounding, otherwise can be asymmetric
+    :return: tuple of (left, right) context size
+    """
+    if isinstance(context_size, int):
+        context_size = (context_size, context_size)
+    elif not isinstance(context_size, (list, tuple)):
+        raise ValueError('`context_size` must be integer or list/tuple')
+
+    if len(context_size) != 2:
+        raise ValueError('`context_size` must be list/tuple of length 2')
+
+    if not all(isinstance(s, int) for s in context_size) \
+            or any(s < 0 for s in context_size) \
+            or all(s == 0 for s in context_size):
+        raise ValueError('`context_size` must contain non-negative integer values and at least one strictly positive '
+                         'value')
+
+    return tuple(context_size)
+
+
 #%% R interoperability
 
 

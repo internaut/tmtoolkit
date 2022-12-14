@@ -20,6 +20,7 @@ import numpy as np
 import pandas as pd
 import pytest
 from hypothesis import given, strategies as st, settings
+from scipy import sparse
 
 if any(find_spec(pkg) is None for pkg in ('spacy', 'bidict', 'loky')):
     pytest.skip("skipping tmtoolkit.corpus tests (required packages not installed)", allow_module_level=True)
@@ -34,6 +35,7 @@ from tmtoolkit.utils import flatten_list
 from tmtoolkit.corpus._common import LANGUAGE_LABELS, TOKENMAT_ATTRS, STD_TOKEN_ATTRS
 TOKENMAT_ATTRS = TOKENMAT_ATTRS - {'whitespace', 'token', 'sent_start'}
 from tmtoolkit import corpus as c
+from tmtoolkit.corpus._corpusfuncs import _token_coocurrence
 from ._testtools import strategy_str_str_dict_printable
 from ._testtextdata import textdata_sm
 
@@ -3323,6 +3325,60 @@ def test_builtin_corpora_info(with_paths):
                 assert corp.language == lang
 
     assert set(corpnames) == set(c.Corpus._BUILTIN_CORPORA_LOAD_KWARGS.keys())
+
+
+#%% test helper functions
+
+
+@pytest.mark.parametrize('context_size, sparse_mat, triu', [
+    (1, False, False),
+    (1, False, True),
+    (1, True, False),
+    (1, True, True),
+    (2, False, False),
+    (2, False, True),
+    (2, True, False),
+    (2, True, True)
+])
+def test__token_coocurrence_example(context_size, sparse_mat, triu):
+    docs = [
+        ['A', 'B', 'D', 'X', 'A', 'X', 'X'],
+        ['X', 'C', 'X', 'X', 'D'],
+        ['D', 'D', 'X', 'D', 'A', 'B'],
+        ['B'],
+        []
+    ]
+
+    if context_size == 1:
+        expected = np.array([
+            [0, 2, 0, 1, 2],
+            [2, 0, 0, 1, 0],
+            [0, 0, 0, 0, 2],
+            [1, 1, 0, 2, 4],
+            [2, 0, 2, 4, 4]], dtype='int32')
+    elif context_size == 2:
+        expected = np.array([
+            [0, 2, 0, 3, 4],
+            [2, 0, 0, 2, 1],
+            [0, 0, 0, 0, 3],
+            [3, 2, 0, 4, 6],
+            [4, 1, 3, 6, 8]], dtype='int32')
+    else:
+        raise ValueError('only context_size 1 or 2 allowed in this test')
+
+    cooc = _token_coocurrence(docs, context_size=context_size, sparse_mat=sparse_mat, triu=triu)
+    if sparse_mat:
+        assert isinstance(cooc, sparse.dok_matrix)
+        cooc = cooc.todense()
+    else:
+        assert isinstance(cooc, np.ndarray)
+
+    assert np.issubdtype(cooc.dtype, 'int32')
+
+    if triu:
+        assert np.all(cooc == np.triu(expected))
+    else:
+        assert np.all(cooc == expected)
 
 
 #%% workflow examples tests

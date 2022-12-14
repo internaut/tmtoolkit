@@ -24,7 +24,7 @@ from zipfile import ZipFile
 import numpy as np
 import pandas as pd
 from bidict import bidict
-from scipy.sparse import csr_matrix
+from scipy import sparse
 from spacy.strings import hash_string
 from spacy.tokens import Doc
 from loky import ProcessPoolExecutor
@@ -33,10 +33,10 @@ from ._document import document_token_attr, document_from_attrs, Document
 from ..bow.dtm import create_sparse_dtm, dtm_to_dataframe
 from ..utils import merge_dicts, empty_chararray, as_chararray, \
     flatten_list, combine_sparse_matrices_columnwise, pickle_data, unpickle_file, merge_sets, \
-    path_split, read_text_file, linebreaks_win2unix, sample_dict, dict2df
+    path_split, read_text_file, linebreaks_win2unix, sample_dict, dict2df, check_context_size
 from ..tokenseq import token_lengths, token_ngrams, token_match_multi_pattern, index_windows_around_matches, \
     token_match_subsequent, token_join_subsequent, npmi, token_collocations, numbertoken_to_magnitude, token_match, \
-    collapse_tokens, simplify_unicode_chars, unique_chars
+    collapse_tokens, simplify_unicode_chars, unique_chars, DOC_START, DOC_END, SPECIAL_TOKENS, pad_sequence
 from ..types import Proportion, StrOrInt
 
 from ._common import DATAPATH, LANGUAGE_LABELS, TOKENMAT_ATTRS, simplified_pos
@@ -1214,10 +1214,10 @@ def print_summary(docs: Corpus,
 def dtm(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None, as_table: bool = False,
         tokens_as_hashes: bool = False, dtype: Optional[Union[str, np.dtype]] = None,
         return_doc_labels: bool = False, return_vocab: bool = False) \
-        -> Union[csr_matrix,
+        -> Union[sparse.csr_matrix,
                  pd.DataFrame,
-                 Tuple[Union[csr_matrix, pd.DataFrame], List[StrOrInt]],
-                 Tuple[Union[csr_matrix, pd.DataFrame], List[StrOrInt], List[StrOrInt]]]:
+                 Tuple[Union[sparse.csr_matrix, pd.DataFrame], List[StrOrInt]],
+                 Tuple[Union[sparse.csr_matrix, pd.DataFrame], List[StrOrInt], List[StrOrInt]]]:
     """
     Generate and return a sparse document-term matrix (or alternatively a dataframe) of shape
     ``(n_docs, n_vocab)`` where ``n_docs`` is the number of documents and ``n_vocab`` is the vocabulary size.
@@ -1269,7 +1269,7 @@ def dtm(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None, as_t
         doc_labels = np.sort(dtm_doc_labels)
     else:
         logger.debug('empty corpus')
-        dtm = csr_matrix((0, 0), dtype=dtype or 'int32')   # empty sparse matrix
+        dtm = sparse.csr_matrix((0, 0), dtype=dtype or 'int32')   # empty sparse matrix
         vocab = np.array([], dtype='uint64') if tokens_as_hashes else empty_chararray()
         doc_labels = empty_chararray()
 
@@ -1374,16 +1374,7 @@ def kwic(docs: Corpus, search_tokens: Any, context_size: Union[int, Tuple[int, i
                               matched keyword
     :return: dict with `document label -> kwic for document` mapping or a dataframe, depending on `as_tables`
     """
-    if isinstance(context_size, int):
-        context_size = (context_size, context_size)
-    elif not isinstance(context_size, (list, tuple)):
-        raise ValueError('`context_size` must be integer or list/tuple')
-
-    if len(context_size) != 2:
-        raise ValueError('`context_size` must be list/tuple of length 2')
-
-    if any(s < 0 for s in context_size) or all(s == 0 for s in context_size):
-        raise ValueError('`context_size` must contain non-negative values and at least one strictly positive value')
+    context_size = check_context_size(context_size)
 
     if glue is not None and with_attr:
         raise ValueError('when `glue` given, `with_attr` must be False')
@@ -1509,19 +1500,8 @@ def token_cooccurrence(docs: Corpus,
                        tokens_as_hashes: bool = False,
                        min_val: int = 1,
                        proportions: Proportion = Proportion.NO) \
-        -> Union[Tuple[csr_matrix, List[StrOrInt]], pd.DataFrame]:
-    if isinstance(context_size, int):
-        context_size = (context_size, context_size)
-    elif not isinstance(context_size, (list, tuple)):
-        raise ValueError('`context_size` must be integer or list/tuple')
-
-    if len(context_size) != 2:
-        raise ValueError('`context_size` must be list/tuple of length 2')
-
-    if any(s < 0 for s in context_size) or all(s == 0 for s in context_size):
-        raise ValueError('`context_size` must contain non-negative values and at least one strictly positive value')
-
-    left, right = context_size
+        -> Union[Tuple[sparse.csr_matrix, List[StrOrInt]], pd.DataFrame]:
+    left, right = check_context_size(context_size)
 
     if tokens:
         tokens = sorted(set(tokens))
@@ -3362,13 +3342,7 @@ def filter_tokens_with_kwic(docs: Corpus, /, search_tokens: Any,
     :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
     :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
     """
-    if isinstance(context_size, int):
-        context_size = (context_size, context_size)
-    elif not isinstance(context_size, (list, tuple)):
-        raise ValueError('`context_size` must be integer or list/tuple')
-
-    if len(context_size) != 2:
-        raise ValueError('`context_size` must be list/tuple of length 2')
+    context_size = check_context_size(context_size)
 
     logger.debug('creating tokens filter mask by applying KWIC')
 
@@ -3968,6 +3942,109 @@ def _comparison_operator_from_str(which: str, common_alias=False, equal=True, wh
         raise ValueError(f"`{whicharg}` must be one of {', '.join(op_table.keys())}")
 
     return op_table[which]
+
+
+def _token_coocurrence(docs: List[Union[List[StrOrInt], np.ndarray]],
+                       context_size: Union[int, Tuple[int, int], List[int]],
+                       tokens: Optional[Union[List[StrOrInt], np.ndarray]] = None,
+                       #as_table: bool = False,
+                       return_tokens: bool = False,
+                       sparse_mat: bool = True,
+                       triu: bool = True,
+                       dtype: str = 'int32') -> Union[np.ndarray, sparse.dok_matrix,
+                                                      Tuple[Union[np.ndarray, sparse.dok_matrix],
+                                                            Union[List[StrOrInt], np.ndarray]]]:
+    empty_res = np.array([[]], dtype=dtype)
+
+    if len(docs) == 0:
+        return empty_res
+
+    if tokens is None:
+        tokens = sorted(set(flatten_list(docs)))
+
+    if len(tokens) == 0:
+        return empty_res
+
+    if len(set(tokens)) != len(tokens):
+        raise ValueError('`tokens` shall not contain duplicate elements')
+
+    as_hashes = isinstance(next(iter(tokens)), int)
+    input_dtype = 'int' if as_hashes else 'str'
+    left, right = check_context_size(context_size)
+
+    if as_hashes:
+        start_sym = DOC_START
+        end_sym = DOC_END
+    else:
+        start_sym = SPECIAL_TOKENS[DOC_START]
+        end_sym = SPECIAL_TOKENS[DOC_END]
+
+    special_symbols = [start_sym, end_sym]
+    n_special = len(special_symbols)
+
+    vocab = np.array(special_symbols + list(tokens), dtype=input_dtype)
+
+    docs = [pad_sequence(tok if isinstance(tok, np.ndarray) else np.array(tok, dtype=input_dtype),
+                         left, right, start_sym, end_sym, skip_empty=True)
+            for tok in docs]
+
+    mat_shape = (len(vocab), len(vocab))
+
+    if sparse_mat:
+        cooc_mat = sparse.dok_matrix(mat_shape, dtype=dtype)
+    else:
+        cooc_mat = np.zeros(mat_shape, dtype=dtype)
+
+    for i, t in enumerate(vocab):
+        if i < n_special: continue
+
+        for d in docs:
+            if len(d) == 0: continue
+
+            matches = token_match(t, d)
+            # all entries in ind_windows will have same length, since the input was padded
+            # hence we can later form a matrix from `ind_windows`
+            ind_windows = index_windows_around_matches(matches, left, right, remove_overlaps=False)
+
+            if not ind_windows: continue
+
+            # select columns left and right to `t` in index window matrix
+            left_right = np.concatenate((np.arange(left), np.arange(left + 1, left + 1 + right)))
+            ind_windows_mat = np.array(ind_windows)[:, left_right]
+
+            # count the left and right neighbors to `t`
+            which_tok, counts = np.unique(np.ravel(d[ind_windows_mat]), return_counts=True)
+            # find the neighbors' indices into `vocab`
+            j = np.flatnonzero(np.isin(vocab, which_tok))
+
+            if triu:   # store only the upper triangle
+                upper = i <= j
+                n_store = np.sum(upper)
+                if n_store == 0:
+                    continue
+
+                if n_store != len(j):
+                    j = j[upper]
+                    counts = counts[upper]
+
+                store_i = np.repeat(i, n_store)
+            else:
+                if sparse_mat:
+                    store_i = np.repeat(i, len(j))
+                else:
+                    store_i = i
+
+            # update the counts in the cooccurrence matrix
+            cooc_mat[store_i, j] += counts
+
+    # skip the document start / document end rows and columns
+    cooc_mat = cooc_mat[n_special:, n_special:]
+    assert cooc_mat.shape == (len(tokens), len(tokens))
+
+    if return_tokens:
+        return cooc_mat, tokens
+    else:
+        return cooc_mat
 
 
 def _match_against(docs: Union[Corpus, Dict[str, Document]], by_attr: str = 'token',
