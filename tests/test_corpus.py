@@ -36,7 +36,7 @@ from tmtoolkit.corpus._common import LANGUAGE_LABELS, TOKENMAT_ATTRS, STD_TOKEN_
 TOKENMAT_ATTRS = TOKENMAT_ATTRS - {'whitespace', 'token', 'sent_start'}
 from tmtoolkit import corpus as c
 from tmtoolkit.corpus._corpusfuncs import _token_coocurrence
-from ._testtools import strategy_str_str_dict_printable
+from ._testtools import strategy_str_str_dict_printable, strategy_lists_of_int_tokens, strategy_lists_of_tokens
 from ._testtextdata import textdata_sm
 
 DATADIR = os.path.join('tests', 'data')
@@ -3341,6 +3341,8 @@ def test_builtin_corpora_info(with_paths):
     (2, True, True)
 ])
 def test__token_coocurrence_example(context_size, sparse_mat, triu):
+    # TODO: add example for non symmetric context size
+
     docs = [
         ['A', 'B', 'D', 'X', 'A', 'X', 'X'],
         ['X', 'C', 'X', 'X', 'D'],
@@ -3379,6 +3381,106 @@ def test__token_coocurrence_example(context_size, sparse_mat, triu):
         assert np.all(cooc == np.triu(expected))
     else:
         assert np.all(cooc == expected)
+
+
+@given(docs=st.one_of(strategy_lists_of_tokens(string.printable), strategy_lists_of_int_tokens(100, 110)),
+       context_size=st.one_of(st.integers(1, 5), st.tuples(st.integers(1, 5), st.integers(1, 5))),
+       tokens=st.one_of(st.none(), st.integers(0, 5)),  # either None or number of tokens to sample from vocab
+       tokens_oov=st.booleans(),    # if True, add an OOV token
+       tokens_duplicate=st.booleans(),    # if True, duplicate a token
+       return_tokens=st.booleans(),
+       sparse_mat=st.booleans(),
+       triu=st.booleans(),
+       dtype=st.sampled_from(['int32', 'int64', 'uint16', 'float32']))
+def test__token_coocurrence(docs, context_size, tokens, tokens_oov, tokens_duplicate, return_tokens, sparse_mat, triu,
+                            dtype):
+    flat_docs = flatten_list(docs)
+    vocab = set(flat_docs)
+    corpussize = len(flat_docs)
+    symm_context = isinstance(context_size, int) or context_size[0] == context_size[1]
+    oov_added = None
+
+    if tokens is not None:
+        tokens = list(vocab)
+
+        if tokens:
+            if tokens_oov:
+                if isinstance(next(iter(tokens)), int):
+                    oov_added = -1
+                elif 'OOV' not in tokens:
+                    oov_added = 'OOV'
+
+                if oov_added is not None:
+                    tokens.append(oov_added)
+
+            if tokens_duplicate:
+                tokens.append(random.choice(tokens))
+
+    args = dict(docs=docs, context_size=context_size, tokens=tokens, return_tokens=return_tokens, sparse_mat=sparse_mat,
+                triu=triu, dtype=dtype)
+
+    if not symm_context and triu:
+        with pytest.raises(ValueError, match='^if the context size is not symmetric, '):
+            _token_coocurrence(**args)
+    elif corpussize > 0 and tokens is not None and tokens_duplicate:
+        with pytest.raises(ValueError, match='`tokens` shall not contain duplicate elements'):
+            _token_coocurrence(**args)
+    else:
+        res = _token_coocurrence(**args)
+
+        if return_tokens:
+            assert isinstance(res, tuple)
+            assert len(res) == 2
+            cooc, ret_tokens = res
+
+            if tokens is None:
+                assert ret_tokens == sorted(vocab)
+            else:
+                assert ret_tokens == tokens
+        else:
+            cooc = res
+
+        del res
+
+        # matrix format (sparse/dense)
+        if sparse_mat:
+            assert isinstance(cooc, sparse.dok_matrix)
+            cooc = cooc.todense()
+        else:
+            assert isinstance(cooc, np.ndarray)
+
+        # matrix dtype
+        assert np.issubdtype(cooc.dtype, dtype)
+
+        # matrix shape
+        if corpussize == 0:
+            expected_n = 0
+        else:
+            if tokens is None:
+                expected_n = len(vocab)
+            else:
+                expected_n = len(tokens)
+
+        assert cooc.shape == (expected_n, expected_n)
+
+        # symmetry when symmetric context size is given
+        if symm_context:
+            if triu and expected_n > 1:   # lower triangle is not stored
+                assert np.all(np.tril(cooc, -1) == 0)
+                cooc += np.triu(cooc, 1).T   # make "full" matrix
+
+            assert np.all(cooc == cooc.T)
+
+        # min/max
+        assert np.all(cooc >= 0)
+        assert np.all(cooc <= corpussize)
+
+        # OOV
+        if oov_added is not None:
+            oov_idx = np.flatnonzero(np.array(tokens) == oov_added)[0]
+            assert np.all(cooc[oov_idx, :] == 0)
+            assert np.all(cooc[:, oov_idx] == 0)
+
 
 
 #%% workflow examples tests

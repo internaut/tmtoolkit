@@ -33,7 +33,7 @@ from ._document import document_token_attr, document_from_attrs, Document
 from ..bow.dtm import create_sparse_dtm, dtm_to_dataframe
 from ..utils import merge_dicts, empty_chararray, as_chararray, \
     flatten_list, combine_sparse_matrices_columnwise, pickle_data, unpickle_file, merge_sets, \
-    path_split, read_text_file, linebreaks_win2unix, sample_dict, dict2df, check_context_size
+    path_split, read_text_file, linebreaks_win2unix, sample_dict, dict2df, check_context_size, indices_of_matches
 from ..tokenseq import token_lengths, token_ngrams, token_match_multi_pattern, index_windows_around_matches, \
     token_match_subsequent, token_join_subsequent, npmi, token_collocations, numbertoken_to_magnitude, token_match, \
     collapse_tokens, simplify_unicode_chars, unique_chars, DOC_START, DOC_END, SPECIAL_TOKENS, pad_sequence
@@ -3947,14 +3947,26 @@ def _comparison_operator_from_str(which: str, common_alias=False, equal=True, wh
 def _token_coocurrence(docs: List[Union[List[StrOrInt], np.ndarray]],
                        context_size: Union[int, Tuple[int, int], List[int]],
                        tokens: Optional[Union[List[StrOrInt], np.ndarray]] = None,
-                       #as_table: bool = False,
                        return_tokens: bool = False,
                        sparse_mat: bool = True,
                        triu: bool = True,
                        dtype: str = 'int32') -> Union[np.ndarray, sparse.dok_matrix,
                                                       Tuple[Union[np.ndarray, sparse.dok_matrix],
                                                             Union[List[StrOrInt], np.ndarray]]]:
-    empty_res = np.array([[]], dtype=dtype)
+    left, right = check_context_size(context_size)
+    if left != right and triu:
+        raise ValueError('if the context size is not symmetric, `triu` must be set to False since '
+                         'the result matrix is also not symmetric')
+
+    if sparse_mat:
+        empty_mat = sparse.dok_matrix((0, 0), dtype=dtype)
+    else:
+        empty_mat = np.empty((0, 0), dtype=dtype)
+
+    if return_tokens:
+        empty_res = (empty_mat, [])
+    else:
+        empty_res = empty_mat
 
     if len(docs) == 0:
         return empty_res
@@ -3970,7 +3982,6 @@ def _token_coocurrence(docs: List[Union[List[StrOrInt], np.ndarray]],
 
     as_hashes = isinstance(next(iter(tokens)), int)
     input_dtype = 'int' if as_hashes else 'str'
-    left, right = check_context_size(context_size)
 
     if as_hashes:
         start_sym = DOC_START
@@ -3982,6 +3993,7 @@ def _token_coocurrence(docs: List[Union[List[StrOrInt], np.ndarray]],
     special_symbols = [start_sym, end_sym]
     n_special = len(special_symbols)
 
+    # vocab is NOT sorted since special symbols come first
     vocab = np.array(special_symbols + list(tokens), dtype=input_dtype)
 
     docs = [pad_sequence(tok if isinstance(tok, np.ndarray) else np.array(tok, dtype=input_dtype),
@@ -4015,7 +4027,7 @@ def _token_coocurrence(docs: List[Union[List[StrOrInt], np.ndarray]],
             # count the left and right neighbors to `t`
             which_tok, counts = np.unique(np.ravel(d[ind_windows_mat]), return_counts=True)
             # find the neighbors' indices into `vocab`
-            j = np.flatnonzero(np.isin(vocab, which_tok))
+            j = indices_of_matches(which_tok, vocab)
 
             if triu:   # store only the upper triangle
                 upper = i <= j
@@ -4033,6 +4045,9 @@ def _token_coocurrence(docs: List[Union[List[StrOrInt], np.ndarray]],
                     store_i = np.repeat(i, len(j))
                 else:
                     store_i = i
+
+            if not np.issubdtype(counts.dtype, dtype):
+                counts = counts.astype(dtype)
 
             # update the counts in the cooccurrence matrix
             cooc_mat[store_i, j] += counts

@@ -47,6 +47,10 @@ def strategy_lists_of_tokens(*args, **kwargs):
     return st.lists(st.lists(st.text(*args, **kwargs)))
 
 
+def strategy_lists_of_int_tokens(*args, **kwargs):
+    return st.lists(st.lists(st.integers(*args, **kwargs)))
+
+
 def strategy_texts(*args, **kwargs):
     return st.lists(st.text(*args, **kwargs))
 
