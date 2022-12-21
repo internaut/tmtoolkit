@@ -306,8 +306,8 @@ def mat2d_window_from_indices(mat: np.ndarray,
 
 
 def combine_sparse_matrices_columnwise(matrices: Sequence,
-                                       col_labels: Sequence[StrOrInt],
-                                       row_labels: Sequence[str] = None,
+                                       col_labels: Sequence[Sequence[StrOrInt]],
+                                       row_labels: Sequence[Sequence[str]] = None,
                                        dtype: Optional[Union[str, np.dtype]] = None,
                                        dtype_cols: Optional[Union[str, np.dtype]] = None) \
         -> Union[Tuple[csr_matrix, np.ndarray], Tuple[csr_matrix, np.ndarray, np.ndarray]]:
@@ -346,8 +346,8 @@ def combine_sparse_matrices_columnwise(matrices: Sequence,
 
     The resulting columns will always be sorted in ascending order.
 
-    Additionally you can pass a sequence of row labels for each matrix via `row_labels`. This will also sort the rows in
-    ascending order according to the row labels.
+    Additionally, you can pass a sequence of row labels for each matrix via `row_labels`. This will also sort the rows
+    in ascending order according to the row labels.
 
     :param matrices: sequence of sparse matrices
     :param col_labels: column labels for each matrix in `matrices`; may be sequence of strings or integers

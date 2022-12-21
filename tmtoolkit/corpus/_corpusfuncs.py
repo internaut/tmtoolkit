@@ -36,7 +36,8 @@ from ..utils import merge_dicts, empty_chararray, as_chararray, \
     path_split, read_text_file, linebreaks_win2unix, sample_dict, dict2df, check_context_size, indices_of_matches
 from ..tokenseq import token_lengths, token_ngrams, token_match_multi_pattern, index_windows_around_matches, \
     token_match_subsequent, token_join_subsequent, npmi, token_collocations, numbertoken_to_magnitude, token_match, \
-    collapse_tokens, simplify_unicode_chars, unique_chars, DOC_START, DOC_END, SPECIAL_TOKENS, pad_sequence
+    collapse_tokens, simplify_unicode_chars, unique_chars, DOC_START, DOC_END, SPECIAL_TOKENS, pad_sequence, \
+    token_hash_convert
 from ..types import Proportion, StrOrInt
 
 from ._common import DATAPATH, LANGUAGE_LABELS, TOKENMAT_ATTRS, simplified_pos
@@ -1496,33 +1497,65 @@ def token_cooccurrence(docs: Corpus,
                        tokens: Optional[Collection[StrOrInt]] = None,
                        select: Optional[Union[str, Collection[str]]] = None,
                        by_attr: Optional[str] = None,   # TODO
-                       as_table: bool = False,
                        tokens_as_hashes: bool = False,
-                       min_val: int = 1,
+                       sparse_mat: bool = True,
+                       triu: bool = False,
+                       as_table: bool = False,
+                       dtype: str = 'int32',
+                       return_tokens: bool = False,
                        proportions: Proportion = Proportion.NO) \
-        -> Union[Tuple[sparse.csr_matrix, List[StrOrInt]], pd.DataFrame]:
+        -> Union[Tuple[Union[sparse.dok_matrix, np.ndarray], List[StrOrInt]], pd.DataFrame]:
     left, right = check_context_size(context_size)
 
-    if tokens:
-        tokens = sorted(set(tokens))
+    if left != right and triu:
+        raise ValueError('if the context size is not symmetric, `triu` must be set to False since '
+                         'the result matrix is also not symmetric')
+
+    if as_table:
+        empty_res = pd.DataFrame(dtype=dtype)
     else:
+        empty_res = sparse.dok_matrix((0, 0), dtype=dtype) if sparse_mat else np.empty((0, 0), dtype=dtype), tokens
+
+    if not docs:
+        return empty_res
+
+    token_hashes = None
+    if tokens is None:
         tokens = vocabulary(docs, select=select, tokens_as_hashes=tokens_as_hashes, sort=True)
+        if tokens_as_hashes:
+            token_hashes = tokens
 
-    matchdata = _match_against(docs, by_attr, select=select,
-                               default=docs.custom_token_attrs_defaults.get(by_attr, None))
+    if not tokens:
+        return empty_res
 
-    for t in tokens:
-        doc_matches = _token_pattern_matches(matchdata, t)
-        for matches in doc_matches.values():
-            ind_windows = index_windows_around_matches(matches, left, right, remove_overlaps=False)
+    if token_hashes is None:
+        if isinstance(next(iter(tokens)), int):
+            token_hashes = np.array(tokens, dtype='uint64')
+        elif isinstance(tokens, np.ndarray) and np.issubdtype(tokens.dtype, 'uint64'):
+            token_hashes = tokens
+        else:
+            token_hashes = np.array(token_hash_convert(tokens, stringstore=docs.bimaps['token'].inv), dtype='uint64')
 
-            for win in ind_windows:
-                # add padding option to index_windows_around_matches?
-                # count occurrences in win
-                pass
+    @parallelexec(collect_fn=list)
+    def _parallel_token_cooc(chunk):
+        return _token_cooccurrence_matrix(chunk.values(),
+                                          context_size=(left, right),
+                                          tokens=token_hashes,
+                                          sparse_mat=sparse_mat,
+                                          triu=triu,
+                                          dtype=dtype)
 
+    data = doc_tokens(docs, select=select, only_non_empty=True, tokens_as_hashes=True, as_arrays=True)
+    matrices = _parallel_token_cooc(_paralleltask(docs, data))
 
+    cooc_mat = matrices[0]
+    for m in matrices[1:]:
+        cooc_mat += m
 
+    if as_table:
+        return pd.DataFrame(cooc_mat.todense(), index=tokens, columns=tokens)
+    else:
+        return cooc_mat, tokens
 
 
 #%% Corpus I/O
@@ -3944,44 +3977,32 @@ def _comparison_operator_from_str(which: str, common_alias=False, equal=True, wh
     return op_table[which]
 
 
-def _token_coocurrence(docs: List[Union[List[StrOrInt], np.ndarray]],
-                       context_size: Union[int, Tuple[int, int], List[int]],
-                       tokens: Optional[Union[List[StrOrInt], np.ndarray]] = None,
-                       return_tokens: bool = False,
-                       sparse_mat: bool = True,
-                       triu: bool = True,
-                       dtype: str = 'int32') -> Union[np.ndarray, sparse.dok_matrix,
-                                                      Tuple[Union[np.ndarray, sparse.dok_matrix],
-                                                            Union[List[StrOrInt], np.ndarray]]]:
-    left, right = check_context_size(context_size)
-    if left != right and triu:
-        raise ValueError('if the context size is not symmetric, `triu` must be set to False since '
-                         'the result matrix is also not symmetric')
+def _token_cooccurrence_matrix(docs: Sequence[Union[List[StrOrInt], np.ndarray]],
+                               context_size: Tuple[int, int],
+                               tokens: Optional[Union[List[StrOrInt], np.ndarray]],
+                               sparse_mat: bool,
+                               triu: bool,
+                               dtype: str = 'int32') -> Union[np.ndarray, sparse.dok_matrix,
+                                                             Tuple[Union[np.ndarray, sparse.dok_matrix],
+                                                             Union[List[StrOrInt], np.ndarray]]]:
+    """
+    Helper function to generate a token coocurrence matrix for given tokens `tokens` in documents `docs`.
+    Returns either sparse or dense matrix (`sparse_mat`), either full or only upper triangle (`triu`). In
+    the latter case, `context_size` must be symmetric.
+    """
+    left, right = context_size
 
-    if sparse_mat:
-        empty_mat = sparse.dok_matrix((0, 0), dtype=dtype)
-    else:
-        empty_mat = np.empty((0, 0), dtype=dtype)
+    assert (triu and left == right) or not triu, 'triu requires symmetric context size'
 
-    if return_tokens:
-        empty_res = (empty_mat, [])
-    else:
-        empty_res = empty_mat
-
-    if len(docs) == 0:
-        return empty_res
-
-    if tokens is None:
-        tokens = sorted(set(flatten_list(docs)))
-
-    if len(tokens) == 0:
-        return empty_res
+    if len(docs) == 0 or len(tokens) == 0:
+        return sparse.dok_matrix((0, 0), dtype=dtype) if sparse_mat else np.empty((0, 0), dtype=dtype)
 
     if len(set(tokens)) != len(tokens):
         raise ValueError('`tokens` shall not contain duplicate elements')
 
-    as_hashes = isinstance(next(iter(tokens)), int)
-    input_dtype = 'int' if as_hashes else 'str'
+    as_hashes = (isinstance(tokens, np.ndarray) and np.issubdtype(tokens.dtype, 'uint64')) or \
+                isinstance(next(iter(tokens)), int)
+    input_dtype = 'uint64' if as_hashes else 'str'
 
     if as_hashes:
         start_sym = DOC_START
@@ -4056,10 +4077,7 @@ def _token_coocurrence(docs: List[Union[List[StrOrInt], np.ndarray]],
     cooc_mat = cooc_mat[n_special:, n_special:]
     assert cooc_mat.shape == (len(tokens), len(tokens))
 
-    if return_tokens:
-        return cooc_mat, tokens
-    else:
-        return cooc_mat
+    return cooc_mat
 
 
 def _match_against(docs: Union[Corpus, Dict[str, Document]], by_attr: str = 'token',

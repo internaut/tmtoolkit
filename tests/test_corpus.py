@@ -35,7 +35,7 @@ from tmtoolkit.utils import flatten_list
 from tmtoolkit.corpus._common import LANGUAGE_LABELS, TOKENMAT_ATTRS, STD_TOKEN_ATTRS
 TOKENMAT_ATTRS = TOKENMAT_ATTRS - {'whitespace', 'token', 'sent_start'}
 from tmtoolkit import corpus as c
-from tmtoolkit.corpus._corpusfuncs import _token_coocurrence
+from tmtoolkit.corpus._corpusfuncs import _token_cooccurrence_matrix
 from ._testtools import strategy_str_str_dict_printable, strategy_lists_of_int_tokens, strategy_lists_of_tokens
 from ._testtextdata import textdata_sm
 
@@ -1710,6 +1710,80 @@ def test_kwic_table_hypothesis(corpora_en_serial_and_parallel_module, **args):
                                 assert all([x.count(args['highlight_keyword']) == 2 for x in dkwic[matchattr]])
 
 
+@pytest.mark.parametrize('context_size, sparse_mat, triu', [
+    (1, False, False),
+    (1, False, True),
+    (1, True, False),
+    (1, True, True),
+    (2, False, False),
+    (2, False, True),
+    (2, True, False),
+    (2, True, True),
+    ((1, 2), False, False),
+    ((1, 2), True, False),
+])
+def test_token_coocurrence_matrix_example(context_size, sparse_mat, triu):
+    docs = [
+        ['A', 'B', 'D', 'X', 'A', 'X', 'X'],
+        ['X', 'C', 'X', 'X', 'D'],
+        ['D', 'D', 'X', 'D', 'A', 'B'],
+        ['B'],
+        []
+    ]
+
+    if context_size == 1:
+        expected = np.array([
+            [0, 2, 0, 1, 2],
+            [2, 0, 0, 1, 0],
+            [0, 0, 0, 0, 2],
+            [1, 1, 0, 2, 4],
+            [2, 0, 2, 4, 4]], dtype='int32')
+    elif context_size == 2:
+        expected = np.array([
+            [0, 2, 0, 3, 4],
+            [2, 0, 0, 2, 1],
+            [0, 0, 0, 0, 3],
+            [3, 2, 0, 4, 6],
+            [4, 1, 3, 6, 8]], dtype='int32')
+    elif context_size == (1, 2):
+        expected = np.array([
+            [0, 2, 0, 2, 3],
+            [2, 0, 0, 1, 1],
+            [0, 0, 0, 0, 3],
+            [2, 2, 0, 3, 5],
+            [3, 0, 2, 5, 6]], dtype='int32')
+    else:
+        raise ValueError('invalid context_size for this test')
+
+    if isinstance(context_size, int):
+        context_size = (context_size, context_size)
+
+    for test_n_workers in range(5):
+        if test_n_workers > 0:  # test corpus func
+            corp = c.Corpus({str(i): ' '.join(d) for i, d in enumerate(docs)}, language='en',
+                            max_workers=test_n_workers)
+            cooc, tokens = c.token_cooccurrence(corp, context_size=context_size, sparse_mat=sparse_mat, triu=triu)
+            assert tokens == c.vocabulary(corp)
+        else:  # test helper func
+            cooc = _token_cooccurrence_matrix(docs,
+                                              context_size=context_size,
+                                              tokens=sorted(set(flatten_list(docs))),
+                                              sparse_mat=sparse_mat,
+                                              triu=triu)
+        if sparse_mat:
+            assert isinstance(cooc, sparse.dok_matrix)
+            cooc = cooc.todense()
+        else:
+            assert isinstance(cooc, np.ndarray)
+
+        assert np.issubdtype(cooc.dtype, 'int32')
+
+        if triu:
+            assert np.all(cooc == np.triu(expected))
+        else:
+            assert np.all(cooc == expected)
+
+
 def test_save_load_corpus(corpora_en_serial_and_parallel_module):
     for corp in corpora_en_serial_and_parallel_module:
         with tempfile.TemporaryFile(suffix='.pickle') as ftemp:
@@ -3330,117 +3404,42 @@ def test_builtin_corpora_info(with_paths):
 #%% test helper functions
 
 
-@pytest.mark.parametrize('context_size, sparse_mat, triu', [
-    (1, False, False),
-    (1, False, True),
-    (1, True, False),
-    (1, True, True),
-    (2, False, False),
-    (2, False, True),
-    (2, True, False),
-    (2, True, True)
-])
-def test__token_coocurrence_example(context_size, sparse_mat, triu):
-    # TODO: add example for non symmetric context size
-
-    docs = [
-        ['A', 'B', 'D', 'X', 'A', 'X', 'X'],
-        ['X', 'C', 'X', 'X', 'D'],
-        ['D', 'D', 'X', 'D', 'A', 'B'],
-        ['B'],
-        []
-    ]
-
-    if context_size == 1:
-        expected = np.array([
-            [0, 2, 0, 1, 2],
-            [2, 0, 0, 1, 0],
-            [0, 0, 0, 0, 2],
-            [1, 1, 0, 2, 4],
-            [2, 0, 2, 4, 4]], dtype='int32')
-    elif context_size == 2:
-        expected = np.array([
-            [0, 2, 0, 3, 4],
-            [2, 0, 0, 2, 1],
-            [0, 0, 0, 0, 3],
-            [3, 2, 0, 4, 6],
-            [4, 1, 3, 6, 8]], dtype='int32')
-    else:
-        raise ValueError('only context_size 1 or 2 allowed in this test')
-
-    cooc = _token_coocurrence(docs, context_size=context_size, sparse_mat=sparse_mat, triu=triu)
-    if sparse_mat:
-        assert isinstance(cooc, sparse.dok_matrix)
-        cooc = cooc.todense()
-    else:
-        assert isinstance(cooc, np.ndarray)
-
-    assert np.issubdtype(cooc.dtype, 'int32')
-
-    if triu:
-        assert np.all(cooc == np.triu(expected))
-    else:
-        assert np.all(cooc == expected)
-
-
 @given(docs=st.one_of(strategy_lists_of_tokens(string.printable), strategy_lists_of_int_tokens(100, 110)),
-       context_size=st.one_of(st.integers(1, 5), st.tuples(st.integers(1, 5), st.integers(1, 5))),
+       context_size=st.tuples(st.integers(1, 5), st.integers(1, 5)),
        tokens=st.one_of(st.none(), st.integers(0, 5)),  # either None or number of tokens to sample from vocab
        tokens_oov=st.booleans(),    # if True, add an OOV token
-       tokens_duplicate=st.booleans(),    # if True, duplicate a token
-       return_tokens=st.booleans(),
        sparse_mat=st.booleans(),
        triu=st.booleans(),
        dtype=st.sampled_from(['int32', 'int64', 'uint16', 'float32']))
-def test__token_coocurrence(docs, context_size, tokens, tokens_oov, tokens_duplicate, return_tokens, sparse_mat, triu,
-                            dtype):
+def test__token_cooccurrence_matrix(docs, context_size, tokens, tokens_oov, sparse_mat, triu, dtype):
     flat_docs = flatten_list(docs)
     vocab = set(flat_docs)
     corpussize = len(flat_docs)
     symm_context = isinstance(context_size, int) or context_size[0] == context_size[1]
     oov_added = None
 
-    if tokens is not None:
+    if tokens is None:
+        tokens = sorted(set(flat_docs))
+    else:
         tokens = list(vocab)
 
-        if tokens:
-            if tokens_oov:
-                if isinstance(next(iter(tokens)), int):
-                    oov_added = -1
-                elif 'OOV' not in tokens:
-                    oov_added = 'OOV'
+    if tokens:
+        if tokens_oov:
+            if isinstance(next(iter(tokens)), int):
+                oov_added = -1
+            elif 'OOV' not in tokens:
+                oov_added = 'OOV'
 
-                if oov_added is not None:
-                    tokens.append(oov_added)
+            if oov_added is not None:
+                tokens.append(oov_added)
 
-            if tokens_duplicate:
-                tokens.append(random.choice(tokens))
-
-    args = dict(docs=docs, context_size=context_size, tokens=tokens, return_tokens=return_tokens, sparse_mat=sparse_mat,
-                triu=triu, dtype=dtype)
+    args = dict(docs=docs, context_size=context_size, tokens=tokens, sparse_mat=sparse_mat, triu=triu, dtype=dtype)
 
     if not symm_context and triu:
-        with pytest.raises(ValueError, match='^if the context size is not symmetric, '):
-            _token_coocurrence(**args)
-    elif corpussize > 0 and tokens is not None and tokens_duplicate:
-        with pytest.raises(ValueError, match='`tokens` shall not contain duplicate elements'):
-            _token_coocurrence(**args)
+        with pytest.raises(AssertionError):
+            _token_cooccurrence_matrix(**args)
     else:
-        res = _token_coocurrence(**args)
-
-        if return_tokens:
-            assert isinstance(res, tuple)
-            assert len(res) == 2
-            cooc, ret_tokens = res
-
-            if tokens is None:
-                assert ret_tokens == sorted(vocab)
-            else:
-                assert ret_tokens == tokens
-        else:
-            cooc = res
-
-        del res
+        cooc = _token_cooccurrence_matrix(**args)
 
         # matrix format (sparse/dense)
         if sparse_mat:
