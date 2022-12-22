@@ -1762,16 +1762,20 @@ def test_token_coocurrence_matrix_example(context_size, sparse_mat, triu):
         if test_n_workers > 0:  # test corpus func
             corp = c.Corpus({str(i): ' '.join(d) for i, d in enumerate(docs)}, language='en',
                             max_workers=test_n_workers)
-            cooc, tokens = c.token_cooccurrence(corp, context_size=context_size, sparse_mat=sparse_mat, triu=triu)
+            cooc, tokens = c.token_cooccurrence(corp, context_size=context_size, sparse_mat=sparse_mat, triu=triu,
+                                                return_tokens=True)
             assert tokens == c.vocabulary(corp)
+            expected_sparse_fmt = sparse.csr_matrix
         else:  # test helper func
             cooc = _token_cooccurrence_matrix(docs,
                                               context_size=context_size,
                                               tokens=sorted(set(flatten_list(docs))),
                                               sparse_mat=sparse_mat,
                                               triu=triu)
+            expected_sparse_fmt = sparse.dok_matrix
+
         if sparse_mat:
-            assert isinstance(cooc, sparse.dok_matrix)
+            assert isinstance(cooc, expected_sparse_fmt)
             cooc = cooc.todense()
         else:
             assert isinstance(cooc, np.ndarray)

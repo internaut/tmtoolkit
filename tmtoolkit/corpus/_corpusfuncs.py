@@ -1234,7 +1234,7 @@ def dtm(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None, as_t
     :param as_table: return result as dense pandas DataFrame
     :param tokens_as_hashes: if True, return token type hashes (integers) instead of textual representations (strings)
                              in the vocabulary
-    :param dtype: use a specific matrix dtype; otherwise dtype will be uint32
+    :param dtype: use a specific matrix dtype; otherwise dtype will be int32
     :param return_doc_labels: if True, additionally return sorted document labels that correspond to the rows of the
                               document-term matrix
     :param return_vocab: if True, additionally return the sorted vocabulary that corresponds to the columns of the
@@ -1386,8 +1386,8 @@ def kwic(docs: Corpus, search_tokens: Any, context_size: Union[int, Tuple[int, i
     logger.debug('getting data to match against')
 
     try:
-        matchdata = _match_against(docs, by_attr, select=select,
-                                   default=docs.custom_token_attrs_defaults.get(by_attr, None))
+        matchdata = _select_docs_attr(docs, by_attr, select=select,
+                                      default=docs.custom_token_attrs_defaults.get(by_attr, None))
     except AttributeError:
         raise AttributeError(f'attribute name "{by_attr}" does not exist')
 
@@ -1494,38 +1494,53 @@ def kwic_table(docs: Corpus, search_tokens: Any, context_size: Union[int, Tuple[
 
 def token_cooccurrence(docs: Corpus,
                        context_size: Union[int, Tuple[int, int], List[int]],
-                       tokens: Optional[Collection[StrOrInt]] = None,
+                       tokens: Optional[Union[List[StrOrInt], np.ndarray]] = None,
                        select: Optional[Union[str, Collection[str]]] = None,
                        by_attr: Optional[str] = None,   # TODO
                        tokens_as_hashes: bool = False,
                        sparse_mat: bool = True,
                        triu: bool = False,
                        as_table: bool = False,
-                       dtype: str = 'int32',
-                       return_tokens: bool = False,
-                       proportions: Proportion = Proportion.NO) \
-        -> Union[Tuple[Union[sparse.dok_matrix, np.ndarray], List[StrOrInt]], pd.DataFrame]:
+                       dtype: Union[str, np.dtype] = 'int32',
+                       return_tokens: bool = False) \
+        -> Union[Tuple[Union[sparse.csr_matrix, np.ndarray], List[StrOrInt]], pd.DataFrame]:
     left, right = check_context_size(context_size)
 
     if left != right and triu:
         raise ValueError('if the context size is not symmetric, `triu` must be set to False since '
                          'the result matrix is also not symmetric')
 
+    by_attr = by_attr or 'token'
+
+    try:
+        subset = _select_docs_attr(docs, by_attr, select=select, only_non_empty=True,
+                                   default=docs.custom_token_attrs_defaults.get(by_attr, None),
+                                   as_hashes=True, as_array=True)
+    except AttributeError:
+        raise AttributeError(f'attribute name "{by_attr}" does not exist')
+
+    bimap_attr = docs.bimaps[by_attr]
+
     if as_table:
         empty_res = pd.DataFrame(dtype=dtype)
     else:
-        empty_res = sparse.dok_matrix((0, 0), dtype=dtype) if sparse_mat else np.empty((0, 0), dtype=dtype), tokens
+        empty_res = sparse.csr_matrix((0, 0), dtype=dtype) if sparse_mat else np.empty((0, 0), dtype=dtype), tokens
 
-    if not docs:
+    if not subset:
         return empty_res
 
     token_hashes = None
     if tokens is None:
-        tokens = vocabulary(docs, select=select, tokens_as_hashes=tokens_as_hashes, sort=True)
+        token_hashes_set = set(flatten_list(subset.values()))
         if tokens_as_hashes:
-            token_hashes = tokens
+            tokens = token_hashes = sorted(token_hashes_set)
+        else:
+            tokens = np.array([bimap_attr[h] for h in token_hashes_set], dtype='str')
+            tokens_sort = np.argsort(tokens)
+            token_hashes = np.array(list(token_hashes_set), dtype='uint64')[tokens_sort]
+            tokens = tokens[tokens_sort]
 
-    if not tokens:
+    if len(tokens) == 0:
         return empty_res
 
     if token_hashes is None:
@@ -1534,28 +1549,36 @@ def token_cooccurrence(docs: Corpus,
         elif isinstance(tokens, np.ndarray) and np.issubdtype(tokens.dtype, 'uint64'):
             token_hashes = tokens
         else:
-            token_hashes = np.array(token_hash_convert(tokens, stringstore=docs.bimaps['token'].inv), dtype='uint64')
+            token_hashes = np.array(token_hash_convert(tokens, stringstore=bimap_attr.inv), dtype='uint64')
+
+    assert len(tokens) == len(token_hashes)
+    assert isinstance(token_hashes, np.ndarray) and np.issubdtype(token_hashes.dtype, 'uint64')
 
     @parallelexec(collect_fn=list)
     def _parallel_token_cooc(chunk):
-        return _token_cooccurrence_matrix(chunk.values(),
-                                          context_size=(left, right),
-                                          tokens=token_hashes,
-                                          sparse_mat=sparse_mat,
-                                          triu=triu,
-                                          dtype=dtype)
+        m = _token_cooccurrence_matrix(chunk.values(),
+                                       context_size=(left, right),
+                                       tokens=token_hashes,
+                                       sparse_mat=sparse_mat,
+                                       triu=triu,
+                                       dtype=dtype)
+        # convert sparse matrix to CSR since we later add up multiple sparse matrices and DOK matrix addition converts
+        # each time to CSR anyway
+        return m.tocsr() if sparse_mat else m
 
-    data = doc_tokens(docs, select=select, only_non_empty=True, tokens_as_hashes=True, as_arrays=True)
-    matrices = _parallel_token_cooc(_paralleltask(docs, data))
+    matrices = _parallel_token_cooc(_paralleltask(docs, subset))
 
     cooc_mat = matrices[0]
     for m in matrices[1:]:
         cooc_mat += m
 
     if as_table:
-        return pd.DataFrame(cooc_mat.todense(), index=tokens, columns=tokens)
+        cooc_mat = pd.DataFrame(cooc_mat.todense(), index=tokens, columns=tokens)
+
+    if return_tokens:
+        return cooc_mat, tokens.tolist() if isinstance(tokens, np.ndarray) else tokens
     else:
-        return cooc_mat, tokens
+        return cooc_mat
 
 
 #%% Corpus I/O
@@ -2699,7 +2722,7 @@ def filter_tokens(docs: Corpus, /, search_tokens: Any, by_attr: Optional[str] = 
 
     logger.debug('creating tokens filter mask by pattern search')
     try:
-        matchdata = _match_against(docs, by_attr, default=docs.custom_token_attrs_defaults.get(by_attr, None))
+        matchdata = _select_docs_attr(docs, by_attr, default=docs.custom_token_attrs_defaults.get(by_attr, None))
         masks = _filter_tokens(_paralleltask(docs, matchdata))
     except AttributeError:
         raise AttributeError(f'attribute name "{by_attr}" does not exist')
@@ -2771,7 +2794,7 @@ def filter_for_pos(docs: Corpus, /, search_pos: Union[str, Collection[str]], sim
         return _token_pattern_matches(chunk, search_pos)
 
     logger.debug('creating tokens filter mask by POS matching')
-    matchdata = _match_against(docs, 'pos')
+    matchdata = _select_docs_attr(docs, 'pos')
     masks = _filter_pos(_paralleltask(docs, matchdata))
 
     return filter_tokens_by_mask(docs, masks, inverse=inverse, inplace=inplace)
@@ -2946,7 +2969,7 @@ def find_documents(docs: Corpus, /, search_tokens: Any, by_attr: Optional[str] =
 
     logger.debug('creating documents filter mask by pattern search')
     try:
-        matchdata = _match_against(docs, by_attr, default=docs.custom_token_attrs_defaults.get(by_attr, None))
+        matchdata = _select_docs_attr(docs, by_attr, default=docs.custom_token_attrs_defaults.get(by_attr, None))
         docs_matches = _filter_documents(_paralleltask(docs, matchdata), search_tokens=search_tokens,
                                          match_type=match_type,
                                          ignore_case=ignore_case, glob_method=glob_method,
@@ -2997,7 +3020,7 @@ def filter_documents(docs: Corpus, /, search_tokens: Any, by_attr: Optional[str]
 
     logger.debug('creating documents filter mask by pattern search')
     try:
-        matchdata = _match_against(docs, by_attr, default=docs.custom_token_attrs_defaults.get(by_attr, None))
+        matchdata = _select_docs_attr(docs, by_attr, default=docs.custom_token_attrs_defaults.get(by_attr, None))
         remove = _filter_documents(_paralleltask(docs, matchdata), search_tokens=search_tokens, match_type=match_type,
                                    ignore_case=ignore_case, glob_method=glob_method, inverse_matches=inverse_matches,
                                    matches_threshold=matches_threshold, inverse_result=inverse_result,
@@ -3382,7 +3405,7 @@ def filter_tokens_with_kwic(docs: Corpus, /, search_tokens: Any,
     by_attr = by_attr or 'token'
 
     try:
-        matchdata = _match_against(docs, by_attr, default=docs.custom_token_attrs_defaults.get(by_attr, None))
+        matchdata = _select_docs_attr(docs, by_attr, default=docs.custom_token_attrs_defaults.get(by_attr, None))
     except AttributeError:
         raise AttributeError(f'attribute name "{by_attr}" does not exist')
 
@@ -3982,9 +4005,9 @@ def _token_cooccurrence_matrix(docs: Sequence[Union[List[StrOrInt], np.ndarray]]
                                tokens: Optional[Union[List[StrOrInt], np.ndarray]],
                                sparse_mat: bool,
                                triu: bool,
-                               dtype: str = 'int32') -> Union[np.ndarray, sparse.dok_matrix,
-                                                             Tuple[Union[np.ndarray, sparse.dok_matrix],
-                                                             Union[List[StrOrInt], np.ndarray]]]:
+                               dtype: Union[str, np.dtype] = 'int32') \
+        -> Union[np.ndarray, sparse.dok_matrix,
+                 Tuple[Union[np.ndarray, sparse.dok_matrix], Union[List[StrOrInt], np.ndarray]]]:
     """
     Helper function to generate a token coocurrence matrix for given tokens `tokens` in documents `docs`.
     Returns either sparse or dense matrix (`sparse_mat`), either full or only upper triangle (`triu`). In
@@ -4080,12 +4103,12 @@ def _token_cooccurrence_matrix(docs: Sequence[Union[List[StrOrInt], np.ndarray]]
     return cooc_mat
 
 
-def _match_against(docs: Union[Corpus, Dict[str, Document]], by_attr: str = 'token',
-                   select: Optional[Union[str, Collection[str]]] = None, **kwargs) \
+def _select_docs_attr(docs: Union[Corpus, Dict[str, Document]], by_attr: str = 'token', only_non_empty: bool = False,
+                      select: Optional[Union[str, Collection[str]]] = None, **kwargs) \
         -> Dict[str, Any]:
-    """Return the list of values to match against in filtering functions."""
+    """Subset corpus `docs` by `select` and return only the attribute `by_attr`."""
     return {lbl: document_token_attr(d, attr=by_attr, **kwargs) for lbl, d in docs.items()
-            if select is None or lbl in select}
+            if (select is None or lbl in select) and (not only_non_empty or len(d) > 0)}
 
 
 def _check_filter_args(**kwargs):
