@@ -652,6 +652,10 @@ def check_context_size(context_size: Union[int, Tuple[int, int], List[int]]) -> 
 
 
 if find_spec('rpy2') is not None:
+    # silence R startup warnings
+    import rpy2.rinterface_lib.callbacks
+    rpy2.rinterface_lib.callbacks.consolewrite_warnerror = (lambda *args: None)
+
     import rpy2.robjects as robjects
     from rpy2.robjects.packages import importr
     from rpy2.robjects.numpy2ri import numpy2rpy, rpy2py_floatvector, rpy2py_intvector
