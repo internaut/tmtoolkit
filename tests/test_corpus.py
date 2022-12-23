@@ -21,6 +21,7 @@ import pandas as pd
 import pytest
 from hypothesis import given, strategies as st, settings
 from scipy import sparse
+from spacy.strings import hash_string
 
 if any(find_spec(pkg) is None for pkg in ('spacy', 'bidict', 'loky')):
     pytest.skip("skipping tmtoolkit.corpus tests (required packages not installed)", allow_module_level=True)
@@ -1710,6 +1711,61 @@ def test_kwic_table_hypothesis(corpora_en_serial_and_parallel_module, **args):
                                 assert all([x.count(args['highlight_keyword']) == 2 for x in dkwic[matchattr]])
 
 
+@settings(deadline=None)
+@given(
+    context_size=st.one_of(st.integers(-1, 5), st.tuples(st.integers(1, 5), st.integers(1, 5))),
+    tokens_given=st.integers(0, 5),
+    tokens_oov=st.booleans(),
+    select=st.sampled_from([None, 'empty', 'small2', 'nonexistent', ['small1', 'small2'], []]),
+    by_attr=st.sampled_from([None, 'pos', 'lemma']),
+    tokens_as_hashes=st.booleans(),
+    sparse_mat=st.booleans(),
+    triu=st.booleans(),
+    as_table=st.booleans(),
+    dtype=st.sampled_from(['int32', 'int64', 'uint16', 'float32']),
+    return_tokens=st.booleans()
+)
+def test_token_cooccurrence_hypothesis(corpora_en_serial_and_parallel_module, **args):
+    tokens_given = args.pop('tokens_given')
+    tokens_oov = args.pop('tokens_oov')
+    tokens_as_hashes = args['tokens_as_hashes']
+
+    attr = args['by_attr'] or 'token'
+    for corp in corpora_en_serial_and_parallel_module:
+        csize = args['context_size']
+        if (isinstance(csize, int) and csize <= 0) or \
+                (isinstance(csize, tuple) and (any(x < 0 for x in csize) or all(x == 0 for x in csize))):
+            with pytest.raises(ValueError, match='^`context_size` must '):
+                c.token_cooccurrence(corp, tokens=['doesntmatter'], **args)
+        elif isinstance(csize, tuple) and csize[0] != csize[1] and args['triu']:
+            with pytest.raises(ValueError, match='^if the context size is not symmetric, '):
+                c.token_cooccurrence(corp, tokens=['doesntmatter'], **args)
+        elif args['select'] == 'nonexistent' or (args['select'] not in (None, []) and len(corp) == 0):
+            with pytest.raises(KeyError):
+                c.token_cooccurrence(corp, tokens=['doesntmatter'], **args)
+        else:
+            vocab = list(c.vocabulary(corp, select=args['select'], by_attr=attr, tokens_as_hashes=tokens_as_hashes,
+                                      sort=False))
+
+            if tokens_given:
+                k = min(tokens_given, len(vocab)-1)
+                if k > 0:
+                    tokens = random.sample(vocab, k=k)
+                else:
+                    tokens = []
+
+                if tokens_oov:
+                    oov_str = '__OOV__'
+                    oov_hash = hash_string(oov_str)
+                    corp.bimaps[args['by_attr'] or 'token'][oov_hash] = oov_str
+                    tokens.append(oov_hash if tokens_as_hashes else oov_str)
+            else:
+                tokens = None
+
+            res = c.token_cooccurrence(corp, tokens=tokens, **args)
+            # TODO: check result
+
+
 @pytest.mark.parametrize('context_size, sparse_mat, triu', [
     (1, False, False),
     (1, False, True),
@@ -1722,7 +1778,7 @@ def test_kwic_table_hypothesis(corpora_en_serial_and_parallel_module, **args):
     ((1, 2), False, False),
     ((1, 2), True, False),
 ])
-def test_token_coocurrence_matrix_example(context_size, sparse_mat, triu):
+def test_token_cooccurrence_matrix_example(context_size, sparse_mat, triu):
     docs = [
         ['A', 'B', 'D', 'X', 'A', 'X', 'X'],
         ['X', 'C', 'X', 'X', 'D'],
