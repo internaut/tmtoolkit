@@ -1509,7 +1509,10 @@ def token_cooccurrence(docs: Corpus,
                        as_table: bool = False,
                        dtype: Union[str, np.dtype] = 'int32',
                        return_tokens: bool = False) \
-        -> Union[Tuple[Union[sparse.csr_matrix, np.ndarray], List[StrOrInt]], pd.DataFrame]:
+        -> Union[Union[sparse.csr_matrix, np.ndarray],
+                 Tuple[Union[sparse.csr_matrix, np.ndarray], List[StrOrInt]],
+                 pd.DataFrame,
+                 Tuple[pd.DataFrame, List[StrOrInt]]]:
     left, right = check_context_size(context_size)
 
     if left != right and triu:
@@ -1527,14 +1530,6 @@ def token_cooccurrence(docs: Corpus,
 
     bimap_attr = docs.bimaps[by_attr]
 
-    if as_table:
-        empty_res = pd.DataFrame(dtype=dtype)
-    else:
-        empty_res = sparse.csr_matrix((0, 0), dtype=dtype) if sparse_mat else np.empty((0, 0), dtype=dtype), tokens
-
-    if not subset:
-        return empty_res
-
     token_hashes = None
     tokens_cover_vocab = False
     if tokens is None:
@@ -1549,8 +1544,19 @@ def token_cooccurrence(docs: Corpus,
             token_hashes = np.array(list(token_hashes_set), dtype='uint64')[tokens_sort]
             tokens = tokens[tokens_sort]
 
-    if len(tokens) == 0:
-        return empty_res
+    n_tok = len(tokens)
+
+    if not subset or n_tok == 0:
+        empty_res = sparse.csr_matrix((n_tok, n_tok), dtype=dtype) if sparse_mat and not as_table \
+            else np.zeros((n_tok, n_tok), dtype=dtype)
+
+        if as_table:
+            empty_res = pd.DataFrame(empty_res, index=tokens, columns=tokens, dtype=dtype)
+
+        if return_tokens:
+            return empty_res, tokens.tolist() if isinstance(tokens, np.ndarray) else tokens
+        else:
+            return empty_res
 
     if token_hashes is None:
         if isinstance(tokens, np.ndarray) and np.issubdtype(tokens.dtype, 'uint64'):
@@ -1563,7 +1569,7 @@ def token_cooccurrence(docs: Corpus,
             else:   # list or NumPy array of int hashes
                 token_hashes = np.array(tokens, dtype='uint64')
 
-    assert len(tokens) == len(token_hashes)
+    assert n_tok == len(token_hashes)
     assert isinstance(token_hashes, np.ndarray) and np.issubdtype(token_hashes.dtype, 'uint64')
 
     @parallelexec(collect_fn=list)

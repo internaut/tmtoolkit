@@ -1723,12 +1723,19 @@ def test_kwic_table_hypothesis(corpora_en_serial_and_parallel_module, **args):
     triu=st.booleans(),
     as_table=st.booleans(),
     dtype=st.sampled_from(['int32', 'int64', 'uint16', 'float32']),
-    return_tokens=st.booleans()
+    return_tokens=st.booleans(),
+    random_seed=st.integers(1, 5)
 )
 def test_token_cooccurrence_hypothesis(corpora_en_serial_and_parallel_module, **args):
+    oov_str = '__OOV__'
+    oov_hash = hash_string(oov_str)
+
     tokens_given = args.pop('tokens_given')
     tokens_oov = args.pop('tokens_oov')
+    random_seed = args.pop('random_seed')
     tokens_as_hashes = args['tokens_as_hashes']
+    context_size = args['context_size']
+    symm_context = isinstance(context_size, int) or context_size[0] == context_size[1]
 
     attr = args['by_attr'] or 'token'
     for corp in corpora_en_serial_and_parallel_module:
@@ -1745,25 +1752,106 @@ def test_token_cooccurrence_hypothesis(corpora_en_serial_and_parallel_module, **
                 c.token_cooccurrence(corp, tokens=['doesntmatter'], **args)
         else:
             vocab = list(c.vocabulary(corp, select=args['select'], by_attr=attr, tokens_as_hashes=tokens_as_hashes,
-                                      sort=False))
+                                      sort=True))
+            oov_added = None
 
             if tokens_given:
+                # randomly select tokens
                 k = min(tokens_given, len(vocab)-1)
                 if k > 0:
+                    random.seed(random_seed)
                     tokens = random.sample(vocab, k=k)
                 else:
                     tokens = []
 
                 if tokens_oov:
-                    oov_str = '__OOV__'
-                    oov_hash = hash_string(oov_str)
                     corp.bimaps[args['by_attr'] or 'token'][oov_hash] = oov_str
-                    tokens.append(oov_hash if tokens_as_hashes else oov_str)
-            else:
-                tokens = None
+                    oov_added = oov_hash if tokens_as_hashes else oov_str
+                    tokens.append(oov_added)
 
-            res = c.token_cooccurrence(corp, tokens=tokens, **args)
-            # TODO: check result
+                tokens_contain_dupl = len(tokens) != len(set(tokens))
+            else:
+                # use full vocab as tokens
+                tokens = None
+                tokens_contain_dupl = False
+
+            if tokens_contain_dupl:
+                with pytest.raises(ValueError, match='^`tokens` shall not contain duplicate elements$'):
+                    c.token_cooccurrence(corp, tokens=tokens, **args)
+            else:
+                res = c.token_cooccurrence(corp, tokens=tokens, **args)
+
+                # return type
+                if args['return_tokens']:
+                    assert isinstance(res, tuple)
+                    assert len(res) == 2
+                    cooc, returned_tokens = res
+                    assert isinstance(returned_tokens, list)
+                else:
+                    cooc = res
+                    returned_tokens = None
+
+                del res
+
+                # returned tokens
+                if returned_tokens is not None:
+                    if tokens_given:
+                        assert returned_tokens == tokens
+                    else:
+                        assert returned_tokens == vocab
+
+                if not tokens_given:
+                    tokens = vocab
+
+                n_tok = len(tokens)
+
+                if args['as_table']:
+                    # check dataframe
+                    assert isinstance(cooc, pd.DataFrame)
+                    assert np.array_equal(cooc.index.values, cooc.columns.values)
+                    if returned_tokens is not None:
+                        assert cooc.index.values.tolist() == returned_tokens
+                    cooc = cooc.to_numpy()
+
+                # cooc. matrix type
+                if args['sparse_mat'] and not args['as_table']:
+                    assert sparse.issparse(cooc)
+                    cooc = cooc.todense()
+                else:
+                    assert isinstance(cooc, np.ndarray)
+
+                # dtype
+                if not (args['as_table'] and len(cooc) == 0):
+                    # pandas doesn't respect the dtype when creating an empty dataframe (it's always float64 in that
+                    # case)
+                    assert np.issubdtype(cooc.dtype, args['dtype'])
+
+                # shape
+                assert cooc.shape == (n_tok, n_tok)
+
+                # symmetry when symmetric context size is given
+                if symm_context:
+                    if args['triu'] and n_tok > 1:  # lower triangle is not stored
+                        assert np.all(np.tril(cooc, -1) == 0)
+                        cooc += np.triu(cooc, 1).T  # make "full" matrix
+
+                    assert np.all(cooc == cooc.T)
+
+                # min/max
+                corpussize = c.corpus_num_tokens(corp, select=args['select'])
+                assert np.all(cooc >= 0)
+                assert np.all(cooc <= corpussize)
+
+                # OOV
+                if oov_added is not None:
+                    oov_idx = np.flatnonzero(np.array(tokens) == oov_added)[0]
+                    assert np.all(cooc[oov_idx, :] == 0)
+                    assert np.all(cooc[:, oov_idx] == 0)
+
+            # reset bimap and hence vocab
+            try:
+                del corp.bimaps[args['by_attr'] or 'token'][oov_hash]
+            except KeyError: pass
 
 
 @pytest.mark.parametrize('context_size, sparse_mat, triu', [
@@ -1827,6 +1915,7 @@ def test_token_cooccurrence_matrix_example(context_size, sparse_mat, triu):
                                               context_size=context_size,
                                               tokens=sorted(set(flatten_list(docs))),
                                               sparse_mat=sparse_mat,
+                                              tokens_cover_vocab=True,
                                               triu=triu)
             expected_sparse_fmt = sparse.dok_matrix
 
