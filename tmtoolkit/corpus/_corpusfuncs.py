@@ -4143,7 +4143,15 @@ def _token_cooccurrence_matrix(docs: Sequence[Union[List[StrOrInt], np.ndarray]]
                 counts = counts.astype(dtype)
 
             # update the counts in the cooccurrence matrix
-            cooc_mat[store_i, j] += counts
+            if sparse_mat:
+                # we update each cell individually, since otherwise the DOK matrix would internally be converted to a
+                # dense matrix
+                assert len(store_i) == len(j) == len(counts)
+                for i_, j_, n_ in zip(store_i, j, counts):
+                    cooc_mat[i_, j_] += n_
+            else:
+                # update all counts at once
+                cooc_mat[store_i, j] += counts
 
     # skip the document start / document end / OOV rows and columns
     cooc_mat = cooc_mat[n_special:, n_special:]
