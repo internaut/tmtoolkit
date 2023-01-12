@@ -18,7 +18,8 @@ from tmtoolkit.utils import (pickle_data, unpickle_file, flatten_list, greedy_pa
                              mat2d_window_from_indices, combine_sparse_matrices_columnwise, path_split, read_text_file,
                              linebreaks_win2unix, split_func_args, empty_chararray, as_chararray, merge_dicts,
                              merge_sets, sample_dict, enable_logging, set_logging_level, disable_logging, dict2df,
-                             applychain, indices_of_matches, chararray_elem_size, check_context_size)
+                             applychain, indices_of_matches, chararray_elem_size, check_context_size,
+                             pairwise_max_table)
 
 PRINTABLE_ASCII_CHARS = [chr(c) for c in range(32, 127)]
 
@@ -180,6 +181,105 @@ def test_indices_of_matches(a, b, b_is_sorted, check_a_in_b):
         matched = b[ind]
         assert matched.shape == a.shape
         assert np.all(matched == a)
+
+
+@given(m=strategy_2d_array(int, 0, 10),
+       pass_sparse=st.booleans(),
+       labels=st.booleans(),
+       output_columns=st.booleans(),
+       sort=st.integers(0, 4),   # 0: no sort, 1: default sort, 2 to 4: column indices
+       sort_asc=st.booleans(),
+       skip_zeros=st.booleans())
+def test_pairwise_max_table(m, pass_sparse, labels, output_columns, sort, sort_asc, skip_zeros):
+    default_cols = ['x', 'y', 'value']
+
+    if pass_sparse:
+        m = sparse.csr_matrix(m)
+
+    args = dict(skip_zeros=skip_zeros)
+    n = min(m.shape)
+
+    generated_labels = ['l' + str(i) for i in range(n)]
+
+    if labels:
+        args['labels'] = generated_labels
+
+    if output_columns:
+        args['output_columns'] = ['a', 'b', 'n']
+
+    if sort > 2:
+        if output_columns:
+            args['sort'] = args['output_columns'][sort-2]
+        else:
+            args['sort'] = default_cols[sort-2]
+
+        if not sort_asc:
+            args['sort'] = '-' + args['sort']
+    else:
+        args['sort'] = bool(sort)
+        if args['sort']:
+            sort_asc = False
+
+    if m.shape[0] != m.shape[1]:
+        with pytest.raises(ValueError, match='^`m` must be a square matrix'):
+            pairwise_max_table(m=m, **args)
+
+    # truncate
+    m = m[:n, :n]
+
+    # run
+    res = pairwise_max_table(m=m, **args)
+
+    # check
+    assert isinstance(res, pd.DataFrame)
+    res_rows, res_cols = res.shape
+
+    if n == 0:
+        assert res_rows == 0
+
+    if skip_zeros:
+        assert res_rows <= n
+    else:
+        assert res_rows == n
+    assert res_cols == 3
+
+    if output_columns:
+        assert res.columns.tolist() == args['output_columns']
+    else:
+        assert res.columns.tolist() == default_cols
+
+    res_lbls = res.iloc[:, :2].to_numpy()
+    res_vals = res.iloc[:, 2].to_numpy()
+
+    if res_rows > 0:
+        max_val = np.max(m)
+        assert np.isin(max_val, res_vals)
+
+        if sort == 1 or args['sort'] == res.columns.tolist()[-1]:
+            if sort_asc:
+                assert res_vals[-1] == max_val
+            else:
+                assert res_vals[0] == max_val
+
+        if skip_zeros:
+            assert np.all(res_vals > 0)
+
+        if labels:
+            assert np.issubdtype(res_lbls.dtype, 'str') or np.issubdtype(res_lbls.dtype, object)
+            assert np.all(lbl in args['labels'] for lbl in res_lbls.flatten())
+        else:
+            assert np.issubdtype(res_lbls.dtype, 'int')
+            assert np.all(res_lbls >= 0)
+            assert np.all(res_lbls < n)
+
+    # run again using dataframe as input
+    df = pd.DataFrame(m.todense() if sparse.issparse(m) else m, index=generated_labels, columns=generated_labels)
+    res2 = pairwise_max_table(m=df, **args)
+
+    if labels:
+        assert np.all(res == res2)
+    else:
+        assert np.all(res.iloc[:, 2] == res2.iloc[:, 2])
 
 
 @given(data=st.dictionaries(keys=st.text(string.ascii_letters, min_size=1), values=st.integers(), max_size=10),

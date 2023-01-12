@@ -1513,6 +1513,25 @@ def token_cooccurrence(docs: Corpus,
                  Tuple[Union[sparse.csr_matrix, np.ndarray], List[StrOrInt]],
                  pd.DataFrame,
                  Tuple[pd.DataFrame, List[StrOrInt]]]:
+    """
+    TODO
+
+    .. seealso:: See :func:`~tmtoolkit.utils.pairwise_max_table` for a convenient way to get the maximum token
+                 coocurrences in tabular form.
+
+    :param docs:
+    :param context_size:
+    :param tokens:
+    :param select:
+    :param by_attr:
+    :param tokens_as_hashes:
+    :param sparse_mat:
+    :param triu:
+    :param as_table:
+    :param dtype:
+    :param return_tokens:
+    :return:
+    """
     left, right = check_context_size(context_size)
 
     if left != right and triu:
