@@ -1514,23 +1514,37 @@ def token_cooccurrence(docs: Corpus,
                  pd.DataFrame,
                  Tuple[pd.DataFrame, List[StrOrInt]]]:
     """
-    TODO
+    Calculate a token cooccurrence matrix either for all unique tokens in a corpus or for a given set of tokens via
+    `tokens` argument. The cooccurrences are counted within a context window specified via `context_size`. See
+    [JurafskyMartin2023]_, p. 111, section 6.3.3 ("Words as vectors: word dimensions") for details.
+
+    If the context window is symmetric, the output will be a symmetric matrix. In such a case, you can set `triu` to
+    True in order to obtain only the upper triangular of that matrix. Together with using a sparse matrix (`sparse_mat`
+    argument), this can effectively reduce the memory usage.
 
     .. seealso:: See :func:`~tmtoolkit.utils.pairwise_max_table` for a convenient way to get the maximum token
-                 coocurrences in tabular form.
+                 cooccurrences in tabular form. See :func:`~tmtoolkit.bow.bow_stats.codoc_frequencies` to calculate the
+                 token cooccurrence on document-level, i.e. without context window, based on a document-term matrix.
 
-    :param docs:
-    :param context_size:
-    :param tokens:
-    :param select:
-    :param by_attr:
-    :param tokens_as_hashes:
-    :param sparse_mat:
-    :param triu:
-    :param as_table:
-    :param dtype:
-    :param return_tokens:
-    :return:
+    :param docs: a Corpus object
+    :param context_size: either scalar int or tuple/list (left, right) -- number of surrounding words in keyword
+                         context; if scalar, then it is a symmetric surrounding, otherwise can be asymmetric
+    :param tokens: if None, this function will obtain the vocabulary of the passed corpus and compute the cooccurrence
+                   matrix for all tokens in the vocabulary; otherwise specify a sequence of tokens for which to
+                   calculate the cooccurrence matrix
+    :param select: if not None, this can be a single string or a sequence of strings specifying a subset of `docs`
+    :param by_attr: if not None, this should be an attribute name; this attribute data will then be
+                    used for matching instead of the tokens in `docs`
+    :param tokens_as_hashes: if True assume that `tokens` are passed as token hashes integers
+    :param sparse_mat: generate a sparse matrix in CSR format
+    :param triu: return only the upper triangular of the cooccurrence matrix; only possible if `context_size` is
+                 symmetric
+    :param as_table: convert output to pandas dataframe (not sparse)
+    :param dtype: matrix data type
+    :param return_tokens: if True, return the tokens for which the cooccurrence matrix was computed as list; the order
+                          of the items in that list corresponds to the rows and columns of the returned cooc. matrix
+    :return: token cooc. matrix as sparse matrix, dense array, or pandas dataframe; optional list of tokens that
+             correspond to the rows and columns of that matrix
     """
     left, right = check_context_size(context_size)
 
@@ -4060,7 +4074,7 @@ def _token_cooccurrence_matrix(docs: Sequence[Union[List[StrOrInt], np.ndarray]]
         -> Union[np.ndarray, sparse.dok_matrix,
                  Tuple[Union[np.ndarray, sparse.dok_matrix], Union[List[StrOrInt], np.ndarray]]]:
     """
-    Helper function to generate a token coocurrence matrix for given tokens `tokens` in documents `docs`.
+    Helper function to generate a token cooccurrence matrix for given tokens `tokens` in documents `docs`.
     Returns either sparse or dense matrix (`sparse_mat`), either full or only upper triangle (`triu`). In
     the latter case, `context_size` must be symmetric.
     """

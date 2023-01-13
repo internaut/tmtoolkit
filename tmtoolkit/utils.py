@@ -481,7 +481,7 @@ def pairwise_max_table(m: Union[np.ndarray, sparse.spmatrix, pd.DataFrame],
             if max_indices.ndim > 1:
                 max_indices = max_indices[:, 0]
         else:
-            max_indices = np.argmax(m, axis=1, keepdims=True)[:, 0]
+            max_indices = np.asarray(np.argmax(m, axis=1, keepdims=True))[:, 0]
 
         assert len(max_indices) == m.shape[0]
         for i, j in enumerate(max_indices):

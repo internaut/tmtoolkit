@@ -1,9 +1,5 @@
 """
-N-gram models as in [JurafskyMartin2021]_. Mainly provides the :class:`NGramModel` class.
-
-.. [JurafskyMartin2021] Jurafsky, D. and Martin, J.H., 2021. Speech and Language Processing (3rd ed. draft). Online:
-                        https://web.stanford.edu/~jurafsky/slp3/
-
+N-gram models as in [JurafskyMartin2023]_. Mainly provides the :class:`NGramModel` class.
 """
 
 from __future__ import annotations

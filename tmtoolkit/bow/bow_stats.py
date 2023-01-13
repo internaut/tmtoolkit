@@ -70,7 +70,7 @@ def codoc_frequencies(dtm, min_val=1, proportions=0):
     return proportions scaled to the number of documents instead of absolute numbers.
 
     .. seealso:: See :func:`~tmtoolkit.utils.pairwise_max_table` for a convenient way to get the maximum token
-                 coocurrences in tabular form.
+                 cooccurrences in tabular form.
 
     :param dtm: (sparse) document-term-matrix of size NxM (N docs, M is vocab size) with raw term counts.
     :param min_val: threshold for counting occurrences

@@ -5,11 +5,6 @@ and single tokens (i.e. strings).
 Tokens don't have to be represented as strings -- for many functions, they may also be token hashes (as integers).
 Most functions also accept NumPy arrays instead of lists / tuples.
 
-.. [RoleNadif2011] Role, François & Nadif, Mohamed. (2011). Handling the Impact of Low Frequency Events on
-                   Co-occurrence based Measures of Word Similarity - A Case Study of Pointwise Mutual Information.
-.. [Bouma2009] Bouma, G. (2009). Normalized (pointwise) mutual information in collocation extraction. Proceedings
-               of GSCL, 30, 31-40.
-
 .. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
 """
 from __future__ import annotations
