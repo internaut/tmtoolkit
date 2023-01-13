@@ -20,6 +20,8 @@ import numpy as np
 import pandas as pd
 import pytest
 from hypothesis import given, strategies as st, settings
+from scipy import sparse
+from spacy.strings import hash_string
 
 if any(find_spec(pkg) is None for pkg in ('spacy', 'bidict', 'loky')):
     pytest.skip("skipping tmtoolkit.corpus tests (required packages not installed)", allow_module_level=True)
@@ -34,7 +36,8 @@ from tmtoolkit.utils import flatten_list
 from tmtoolkit.corpus._common import LANGUAGE_LABELS, TOKENMAT_ATTRS, STD_TOKEN_ATTRS
 TOKENMAT_ATTRS = TOKENMAT_ATTRS - {'whitespace', 'token', 'sent_start'}
 from tmtoolkit import corpus as c
-from ._testtools import strategy_str_str_dict_printable
+from tmtoolkit.corpus._corpusfuncs import _token_cooccurrence_matrix
+from ._testtools import strategy_str_str_dict_printable, strategy_lists_of_int_tokens, strategy_lists_of_tokens
 from ._testtextdata import textdata_sm
 
 DATADIR = os.path.join('tests', 'data')
@@ -1708,6 +1711,228 @@ def test_kwic_table_hypothesis(corpora_en_serial_and_parallel_module, **args):
                                 assert all([x.count(args['highlight_keyword']) == 2 for x in dkwic[matchattr]])
 
 
+@settings(deadline=None)
+@given(
+    context_size=st.one_of(st.integers(-1, 5), st.tuples(st.integers(1, 5), st.integers(1, 5))),
+    tokens_given=st.integers(0, 5),
+    tokens_oov=st.booleans(),
+    select=st.sampled_from([None, 'empty', 'small2', 'nonexistent', ['small1', 'small2'], []]),
+    by_attr=st.sampled_from([None, 'pos', 'lemma']),
+    tokens_as_hashes=st.booleans(),
+    sparse_mat=st.booleans(),
+    triu=st.booleans(),
+    as_table=st.booleans(),
+    dtype=st.sampled_from(['int32', 'int64', 'uint16', 'float32']),
+    return_tokens=st.booleans(),
+    random_seed=st.integers(1, 5)
+)
+def test_token_cooccurrence_hypothesis(corpora_en_serial_and_parallel_module, **args):
+    oov_str = '__OOV__'
+    oov_hash = hash_string(oov_str)
+
+    tokens_given = args.pop('tokens_given')
+    tokens_oov = args.pop('tokens_oov')
+    random_seed = args.pop('random_seed')
+    tokens_as_hashes = args['tokens_as_hashes']
+    context_size = args['context_size']
+    symm_context = isinstance(context_size, int) or context_size[0] == context_size[1]
+
+    attr = args['by_attr'] or 'token'
+    for corp in corpora_en_serial_and_parallel_module:
+        csize = args['context_size']
+        if (isinstance(csize, int) and csize <= 0) or \
+                (isinstance(csize, tuple) and (any(x < 0 for x in csize) or all(x == 0 for x in csize))):
+            with pytest.raises(ValueError, match='^`context_size` must '):
+                c.token_cooccurrence(corp, tokens=['doesntmatter'], **args)
+        elif isinstance(csize, tuple) and csize[0] != csize[1] and args['triu']:
+            with pytest.raises(ValueError, match='^if the context size is not symmetric, '):
+                c.token_cooccurrence(corp, tokens=['doesntmatter'], **args)
+        elif args['select'] == 'nonexistent' or (args['select'] not in (None, []) and len(corp) == 0):
+            with pytest.raises(KeyError):
+                c.token_cooccurrence(corp, tokens=['doesntmatter'], **args)
+        else:
+            vocab = list(c.vocabulary(corp, select=args['select'], by_attr=attr, tokens_as_hashes=tokens_as_hashes,
+                                      sort=True))
+            oov_added = None
+
+            if tokens_given:
+                # randomly select tokens
+                k = min(tokens_given, len(vocab)-1)
+                if k > 0:
+                    random.seed(random_seed)
+                    tokens = random.sample(vocab, k=k)
+                else:
+                    tokens = []
+
+                if tokens_oov:
+                    corp.bimaps[args['by_attr'] or 'token'][oov_hash] = oov_str
+                    oov_added = oov_hash if tokens_as_hashes else oov_str
+                    tokens.append(oov_added)
+
+                tokens_contain_dupl = len(tokens) != len(set(tokens))
+            else:
+                # use full vocab as tokens
+                tokens = None
+                tokens_contain_dupl = False
+
+            if tokens_contain_dupl:
+                with pytest.raises(ValueError, match='^`tokens` shall not contain duplicate elements$'):
+                    c.token_cooccurrence(corp, tokens=tokens, **args)
+            else:
+                res = c.token_cooccurrence(corp, tokens=tokens, **args)
+
+                # return type
+                if args['return_tokens']:
+                    assert isinstance(res, tuple)
+                    assert len(res) == 2
+                    cooc, returned_tokens = res
+                    assert isinstance(returned_tokens, list)
+                else:
+                    cooc = res
+                    returned_tokens = None
+
+                del res
+
+                # returned tokens
+                if returned_tokens is not None:
+                    if tokens_given:
+                        assert returned_tokens == tokens
+                    else:
+                        assert returned_tokens == vocab
+
+                if not tokens_given:
+                    tokens = vocab
+
+                n_tok = len(tokens)
+
+                if args['as_table']:
+                    # check dataframe
+                    assert isinstance(cooc, pd.DataFrame)
+                    assert np.array_equal(cooc.index.values, cooc.columns.values)
+                    if returned_tokens is not None:
+                        assert cooc.index.values.tolist() == returned_tokens
+                    cooc = cooc.to_numpy()
+
+                # cooc. matrix type
+                if args['sparse_mat'] and not args['as_table']:
+                    assert sparse.issparse(cooc)
+                    cooc = cooc.todense()
+                else:
+                    assert isinstance(cooc, np.ndarray)
+
+                # dtype
+                if not (args['as_table'] and len(cooc) == 0):
+                    # pandas doesn't respect the dtype when creating an empty dataframe (it's always float64 in that
+                    # case)
+                    assert np.issubdtype(cooc.dtype, args['dtype'])
+
+                # shape
+                assert cooc.shape == (n_tok, n_tok)
+
+                # symmetry when symmetric context size is given
+                if symm_context:
+                    if args['triu'] and n_tok > 1:  # lower triangle is not stored
+                        assert np.all(np.tril(cooc, -1) == 0)
+                        cooc += np.triu(cooc, 1).T  # make "full" matrix
+
+                    assert np.all(cooc == cooc.T)
+
+                # min/max
+                corpussize = c.corpus_num_tokens(corp, select=args['select'])
+                assert np.all(cooc >= 0)
+                assert np.all(cooc <= corpussize)
+
+                # OOV
+                if oov_added is not None:
+                    oov_idx = np.flatnonzero(np.array(tokens) == oov_added)[0]
+                    assert np.all(cooc[oov_idx, :] == 0)
+                    assert np.all(cooc[:, oov_idx] == 0)
+
+            # reset bimap and hence vocab
+            try:
+                del corp.bimaps[args['by_attr'] or 'token'][oov_hash]
+            except KeyError: pass
+
+
+@pytest.mark.parametrize('context_size, sparse_mat, triu', [
+    (1, False, False),
+    (1, False, True),
+    (1, True, False),
+    (1, True, True),
+    (2, False, False),
+    (2, False, True),
+    (2, True, False),
+    (2, True, True),
+    ((1, 2), False, False),
+    ((1, 2), True, False),
+])
+def test_token_cooccurrence_matrix_example(context_size, sparse_mat, triu):
+    docs = [
+        ['A', 'B', 'D', 'X', 'A', 'X', 'X'],
+        ['X', 'C', 'X', 'X', 'D'],
+        ['D', 'D', 'X', 'D', 'A', 'B'],
+        ['B'],
+        []
+    ]
+
+    if context_size == 1:
+        expected = np.array([
+            [0, 2, 0, 1, 2],
+            [2, 0, 0, 1, 0],
+            [0, 0, 0, 0, 2],
+            [1, 1, 0, 2, 4],
+            [2, 0, 2, 4, 4]], dtype='int32')
+    elif context_size == 2:
+        expected = np.array([
+            [0, 2, 0, 3, 4],
+            [2, 0, 0, 2, 1],
+            [0, 0, 0, 0, 3],
+            [3, 2, 0, 4, 6],
+            [4, 1, 3, 6, 8]], dtype='int32')
+    elif context_size == (1, 2):
+        expected = np.array([
+            [0, 2, 0, 2, 3],
+            [2, 0, 0, 1, 1],
+            [0, 0, 0, 0, 3],
+            [2, 2, 0, 3, 5],
+            [3, 0, 2, 5, 6]], dtype='int32')
+    else:
+        raise ValueError('invalid context_size for this test')
+
+    if isinstance(context_size, int):
+        context_size = (context_size, context_size)
+
+    for test_n_workers in range(5):
+        if test_n_workers > 0:  # test corpus func
+            corp = c.Corpus({str(i): ' '.join(d) for i, d in enumerate(docs)}, language='en',
+                            max_workers=test_n_workers)
+            cooc, tokens = c.token_cooccurrence(corp, context_size=context_size, sparse_mat=sparse_mat, triu=triu,
+                                                return_tokens=True)
+            assert tokens == c.vocabulary(corp)
+            expected_sparse_fmt = sparse.csr_matrix
+        else:  # test helper func
+            cooc = _token_cooccurrence_matrix(docs,
+                                              context_size=context_size,
+                                              tokens=sorted(set(flatten_list(docs))),
+                                              sparse_mat=sparse_mat,
+                                              tokens_cover_vocab=True,
+                                              triu=triu)
+            expected_sparse_fmt = sparse.dok_matrix
+
+        if sparse_mat:
+            assert isinstance(cooc, expected_sparse_fmt)
+            cooc = cooc.todense()
+        else:
+            assert isinstance(cooc, np.ndarray)
+
+        assert np.issubdtype(cooc.dtype, 'int32')
+
+        if triu:
+            assert np.all(cooc == np.triu(expected))
+        else:
+            assert np.all(cooc == expected)
+
+
 def test_save_load_corpus(corpora_en_serial_and_parallel_module):
     for corp in corpora_en_serial_and_parallel_module:
         with tempfile.TemporaryFile(suffix='.pickle') as ftemp:
@@ -3323,6 +3548,87 @@ def test_builtin_corpora_info(with_paths):
                 assert corp.language == lang
 
     assert set(corpnames) == set(c.Corpus._BUILTIN_CORPORA_LOAD_KWARGS.keys())
+
+
+#%% test helper functions
+
+
+@given(docs=st.one_of(strategy_lists_of_tokens(string.printable), strategy_lists_of_int_tokens(100, 110)),
+       context_size=st.tuples(st.integers(1, 5), st.integers(1, 5)),
+       tokens=st.one_of(st.none(), st.integers(0, 5)),  # either None or number of tokens to sample from vocab
+       tokens_oov=st.booleans(),    # if True, add an OOV token
+       sparse_mat=st.booleans(),
+       triu=st.booleans(),
+       dtype=st.sampled_from(['int32', 'int64', 'uint16', 'float32']))
+def test__token_cooccurrence_matrix(docs, context_size, tokens, tokens_oov, sparse_mat, triu, dtype):
+    flat_docs = flatten_list(docs)
+    vocab = set(flat_docs)
+    corpussize = len(flat_docs)
+    symm_context = isinstance(context_size, int) or context_size[0] == context_size[1]
+    oov_added = None
+
+    if tokens is None:
+        tokens = sorted(set(flat_docs))
+    else:
+        tokens = list(vocab)
+
+    if tokens:
+        if tokens_oov:
+            if isinstance(next(iter(tokens)), int):
+                oov_added = -1
+            elif 'OOV' not in tokens:
+                oov_added = 'OOV'
+
+            if oov_added is not None:
+                tokens.append(oov_added)
+
+    args = dict(docs=docs, context_size=context_size, tokens=tokens, sparse_mat=sparse_mat, triu=triu, dtype=dtype)
+
+    if not symm_context and triu:
+        with pytest.raises(AssertionError):
+            _token_cooccurrence_matrix(**args)
+    else:
+        cooc = _token_cooccurrence_matrix(**args)
+
+        # matrix format (sparse/dense)
+        if sparse_mat:
+            assert isinstance(cooc, sparse.dok_matrix)
+            cooc = cooc.todense()
+        else:
+            assert isinstance(cooc, np.ndarray)
+
+        # matrix dtype
+        assert np.issubdtype(cooc.dtype, dtype)
+
+        # matrix shape
+        if corpussize == 0:
+            expected_n = 0
+        else:
+            if tokens is None:
+                expected_n = len(vocab)
+            else:
+                expected_n = len(tokens)
+
+        assert cooc.shape == (expected_n, expected_n)
+
+        # symmetry when symmetric context size is given
+        if symm_context:
+            if triu and expected_n > 1:   # lower triangle is not stored
+                assert np.all(np.tril(cooc, -1) == 0)
+                cooc += np.triu(cooc, 1).T   # make "full" matrix
+
+            assert np.all(cooc == cooc.T)
+
+        # min/max
+        assert np.all(cooc >= 0)
+        assert np.all(cooc <= corpussize)
+
+        # OOV
+        if oov_added is not None:
+            oov_idx = np.flatnonzero(np.array(tokens) == oov_added)[0]
+            assert np.all(cooc[oov_idx, :] == 0)
+            assert np.all(cooc[:, oov_idx] == 0)
+
 
 
 #%% workflow examples tests

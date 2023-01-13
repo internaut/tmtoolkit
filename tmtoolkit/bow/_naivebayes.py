@@ -1,9 +1,6 @@
 """
-Naive Bayes classifier model as in [JurafskyMartin2021]_, chapt. 4. Mainly provides the :class:`NaiveBayesClassifier`.
+Naive Bayes classifier model as in [JurafskyMartin2023]_, chapt. 4. Mainly provides the :class:`NaiveBayesClassifier`.
 class.
-
-.. [JurafskyMartin2021] Jurafsky, D. and Martin, J.H., 2021. Speech and Language Processing (3rd ed. draft). Online:
-                        https://web.stanford.edu/~jurafsky/slp3/
 """
 
 from __future__ import annotations

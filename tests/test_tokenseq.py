@@ -19,6 +19,79 @@ from tmtoolkit.utils import as_chararray, flatten_list
 from tmtoolkit import tokenseq
 
 
+@given(s=strategy_tokens(string.printable),
+       s_type=st.sampled_from(['list', 'tuple', 'nparray']),
+       left=st.integers(-1, 5),
+       right=st.integers(-1, 5),
+       left_symbol=st.sampled_from(['', 'X', 'START']),
+       right_symbol=st.sampled_from(['', 'Y', 'END']),
+       skip_empty=st.booleans())
+def test_pad_sequence_str(s, s_type, left, right, left_symbol, right_symbol, skip_empty):
+    _test_pad_sequence(s, s_type, 'str', left, right, left_symbol, right_symbol, skip_empty)
+
+
+@given(s=st.lists(st.integers(21, 40)),
+       s_type=st.sampled_from(['list', 'tuple', 'nparray']),
+       left=st.integers(-1, 5),
+       right=st.integers(-1, 5),
+       left_symbol=st.sampled_from([0, -1, 10]),
+       right_symbol=st.sampled_from([0, -2, 20]),
+       skip_empty=st.booleans())
+def test_pad_sequence_int(s, s_type, left, right, left_symbol, right_symbol, skip_empty):
+    _test_pad_sequence(s, s_type, 'int', left, right, left_symbol, right_symbol, skip_empty)
+
+
+def _test_pad_sequence(s, s_type, el_type, left, right, left_symbol, right_symbol, skip_empty):
+    if s_type == 'tuple':
+        s = tuple(s)
+        check_type = tuple
+    elif s_type == 'nparray':
+        if el_type == 'str':
+            s = as_chararray(s)
+        else:
+            s = np.array(s, dtype='int')
+        check_type = np.ndarray
+    else:
+        check_type = list
+
+    args = dict(left=left, right=right, left_symbol=left_symbol, right_symbol=right_symbol, skip_empty=skip_empty)
+
+    if left < 0 or right < 0:
+        with pytest.raises(ValueError):
+            tokenseq.pad_sequence(s, **args)
+    else:
+        spad = tokenseq.pad_sequence(s, **args)
+        assert isinstance(spad, check_type)
+
+        if s_type == 'nparray':
+            assert np.issubdtype(spad.dtype, el_type)
+
+            if el_type == 'int':
+                el_type_check = np.int64
+            else:
+                el_type_check = str
+        else:
+            if el_type == 'int':
+                el_type_check = int
+            else:
+                el_type_check = str
+
+        assert all(isinstance(t, el_type_check) for t in list(spad))
+
+        assert len(spad) >= len(s)
+
+        if (skip_empty and len(s) == 0) or left == right == 0:
+            assert list(spad) == list(s)
+        else:
+            assert len(spad) == len(s) + left + right
+            assert list(spad[:left]) == [left_symbol] * left
+            if right > 0:
+                assert list(spad[-right:]) == [right_symbol] * right
+                assert list(spad[left:-right]) == list(s)
+            else:
+                assert list(spad[left:]) == list(s)
+
+
 @pytest.mark.parametrize('tokens, expected', [
     ([], []),
     ([''], [0]),

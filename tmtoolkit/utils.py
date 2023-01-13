@@ -3,6 +3,7 @@ Misc. utility functions.
 
 .. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
 """
+from __future__ import annotations
 
 import codecs
 import logging
@@ -305,8 +306,8 @@ def mat2d_window_from_indices(mat: np.ndarray,
 
 
 def combine_sparse_matrices_columnwise(matrices: Sequence,
-                                       col_labels: Sequence[StrOrInt],
-                                       row_labels: Sequence[str] = None,
+                                       col_labels: Sequence[Sequence[StrOrInt]],
+                                       row_labels: Sequence[Sequence[str]] = None,
                                        dtype: Optional[Union[str, np.dtype]] = None,
                                        dtype_cols: Optional[Union[str, np.dtype]] = None) \
         -> Union[Tuple[csr_matrix, np.ndarray], Tuple[csr_matrix, np.ndarray, np.ndarray]]:
@@ -345,8 +346,8 @@ def combine_sparse_matrices_columnwise(matrices: Sequence,
 
     The resulting columns will always be sorted in ascending order.
 
-    Additionally you can pass a sequence of row labels for each matrix via `row_labels`. This will also sort the rows in
-    ascending order according to the row labels.
+    Additionally, you can pass a sequence of row labels for each matrix via `row_labels`. This will also sort the rows
+    in ascending order according to the row labels.
 
     :param matrices: sequence of sparse matrices
     :param col_labels: column labels for each matrix in `matrices`; may be sequence of strings or integers
@@ -427,7 +428,102 @@ def combine_sparse_matrices_columnwise(matrices: Sequence,
         return res.tocsr(), all_cols
 
 
+def pairwise_max_table(m: Union[np.ndarray, sparse.spmatrix, pd.DataFrame],
+                       labels: Optional[Sequence] = None,
+                       output_columns: Sequence[str] = ('x', 'y', 'value'),
+                       sort: Optional[Union[str, bool]] = True,
+                       skip_zeros: bool = False) -> pd.DataFrame:
+    """
+    Given a symmetric or triangular matrix or dataframe `m` in which each entry ``m[i,j]`` denotes some metric between a
+    pair ``(i, j)``, this function takes the maximum entry for each row and outputs the result as dataframe. This will
+    result in a table containing the maximum of each pair ``i`` and ``j``.
+
+    :param m: symmetric or triangular matrix or dataframe; can be a sparse matrix
+    :param labels: sequence of pair labels; if `m` is a dataframe, the labels will be taken from its column names
+    :param output_columns: names of columns in output dataframe
+    :param sort: optionally sort by this column; by default will sort by last column in `output_columns` in descending
+           order; pass a string to specify the column and prepend by "-" to indicate descending sorting order, e.g.
+           "-value"
+    :param skip_zeros: don't store pair entries with value zero in the result
+    :return: dataframe with pair maxima
+    """
+
+    if m.ndim != 2 or m.shape[0] != m.shape[1]:
+        raise ValueError('`m` must be a square matrix or dataframe')
+
+    if labels is not None and len(labels) != m.shape[0]:
+        raise ValueError('if `labels` is given, its length must match the dimensions of `m`')
+
+    if isinstance(m, pd.DataFrame):
+        if labels is None:
+            labels = m.columns.tolist()
+        m = m.to_numpy()
+
+    if len(output_columns) != 3:
+        raise ValueError('`output_columns` must contain 3 column names')
+
+    if sort is True:
+        sort = '-' + output_columns[-1]
+    elif sort is None:
+        sort = False
+    elif not isinstance(sort, (bool, str)):
+        raise ValueError('`sort` must be either None, a boolean or a string value')
+
+    if sort:
+        nopre_sort = sort[1:] if sort.startswith('-') else sort
+        if nopre_sort not in output_columns:
+            raise ValueError('if `sort` is given as string, it must be one of the items in `output_columns`')
+
+    maxima = []
+    if m.shape[0] > 0:
+        if sparse.issparse(m):
+            max_indices = np.asarray(np.argmax(m, axis=1))   # keepdims arg not supported
+            if max_indices.ndim > 1:
+                max_indices = max_indices[:, 0]
+        else:
+            max_indices = np.asarray(np.argmax(m, axis=1, keepdims=True))[:, 0]
+
+        assert len(max_indices) == m.shape[0]
+        for i, j in enumerate(max_indices):
+            m_ij = m[i, j]
+            if not skip_zeros or m_ij > 0:
+                if labels is None:
+                    lbl_i = i
+                    lbl_j = j
+                else:
+                    lbl_i = labels[i]
+                    lbl_j = labels[j]
+                maxima.append([lbl_i, lbl_j, m_ij])
+
+    return sorted_df(pd.DataFrame(maxima, columns=output_columns), sort=sort or None)
+
+
 #%% misc functions
+
+
+def sorted_df(df: pd.DataFrame, sort: Optional[str] = None, **kwargs) -> pd.DataFrame:
+    """
+    Sort a dataframe `df` by column `sort` if `sort` is not None. Otherwise, keep `df` unchanged.
+
+    :param df: input dataframe
+    :param sort: optionally sort by this column; prepend by "-" to indicate descending sorting order, e.g. "-value"
+    :param kwargs: optional arguments passed to ``pandas.DataFrame.sort_values``
+    :return: optionally sorted dataframe
+    """
+    inplace = kwargs.pop('inplace', False)
+
+    if sort is not None:
+        if sort.startswith('-'):
+            asc = False
+            sort = sort[1:]
+        else:
+            asc = True
+        return df.sort_values(by=sort, ascending=asc, inplace=inplace, **kwargs)
+    else:
+        if inplace:
+            return df
+        else:
+            return df.copy()
 
 
 def dict2df(data: dict, key_name: str = 'key', value_name: str = 'value', sort: Optional[str] = None) -> pd.DataFrame:
@@ -450,16 +546,7 @@ def dict2df(data: dict, key_name: str = 'key', value_name: str = 'value', sort: 
     if key_name == value_name:
         raise ValueError('`key_name` and `value_name` must differ')
 
-    df = pd.DataFrame({key_name: data.keys(), value_name: data.values()})
-    if sort is not None:
-        if sort.startswith('-'):
-            asc = False
-            sort = sort[1:]
-        else:
-            asc = True
-        return df.sort_values(by=sort, ascending=asc)
-    else:
-        return df
+    return sorted_df(pd.DataFrame({key_name: data.keys(), value_name: data.values()}), sort=sort)
 
 
 def applychain(funcs: Iterable[Callable], initial_arg: Any) -> Any:
@@ -621,10 +708,40 @@ def split_func_args(fn: Callable, args: Dict[str, Any]) -> Tuple[Dict[str, Any],
            {k: v for k, v in args.items() if k not in fn_argnames}
 
 
+def check_context_size(context_size: Union[int, Tuple[int, int], List[int]]) -> Tuple[int, int]:
+    """
+    Check a context size for validity. The context size must be given as integer for a symmetric context size or as
+    tuple (left, right) and must contain at least one strictly positive value.
+
+    :param context_size: either scalar int or tuple/list (left, right) -- number of surrounding tokens; if scalar,
+                         then it is a symmetric surrounding, otherwise can be asymmetric
+    :return: tuple of (left, right) context size
+    """
+    if isinstance(context_size, int):
+        context_size = (context_size, context_size)
+    elif not isinstance(context_size, (list, tuple)):
+        raise ValueError('`context_size` must be integer or list/tuple')
+
+    if len(context_size) != 2:
+        raise ValueError('`context_size` must be list/tuple of length 2')
+
+    if not all(isinstance(s, int) for s in context_size) \
+            or any(s < 0 for s in context_size) \
+            or all(s == 0 for s in context_size):
+        raise ValueError('`context_size` must contain non-negative integer values and at least one strictly positive '
+                         'value')
+
+    return tuple(context_size)
+
+
 #%% R interoperability
 
 
 if find_spec('rpy2') is not None:
+    # silence R startup warnings
+    import rpy2.rinterface_lib.callbacks
+    rpy2.rinterface_lib.callbacks.consolewrite_warnerror = (lambda *args: None)
+
     import rpy2.robjects as robjects
     from rpy2.robjects.packages import importr
     from rpy2.robjects.numpy2ri import numpy2rpy, rpy2py_floatvector, rpy2py_intvector

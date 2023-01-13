@@ -1,9 +1,5 @@
 """
-N-gram models as in [JurafskyMartin2021]_. Mainly provides the :class:`NGramModel` class.
-
-.. [JurafskyMartin2021] Jurafsky, D. and Martin, J.H., 2021. Speech and Language Processing (3rd ed. draft). Online:
-                        https://web.stanford.edu/~jurafsky/slp3/
-
+N-gram models as in [JurafskyMartin2023]_. Mainly provides the :class:`NGramModel` class.
 """
 
 from __future__ import annotations
@@ -12,23 +8,10 @@ import random
 from collections import Counter
 from typing import Optional, Union, List, Tuple, Generator, Dict, Iterable
 
-from bidict import bidict
-
 from tmtoolkit.corpus import doc_tokens, Corpus
-from tmtoolkit.tokenseq import token_ngrams, token_hash_convert
+from tmtoolkit.tokenseq import OOV, SENT_START, SENT_END, SPECIAL_TOKENS, token_ngrams, token_hash_convert, pad_sequence
 from tmtoolkit.types import StrOrInt
 from tmtoolkit.utils import flatten_list
-
-OOV = 0
-SENT_START = 10
-SENT_END = 11
-
-
-SPECIAL_TOKENS = bidict({
-    SENT_START: '<s>',
-    SENT_END: '</s>',
-    OOV: '<oov>'
-})
 
 
 class NGramModel:
@@ -356,25 +339,8 @@ class NGramModel:
         start_symbol = SENT_START if self.tokens_as_hashes else SPECIAL_TOKENS[SENT_START]
         end_symbol = SENT_END if self.tokens_as_hashes else SPECIAL_TOKENS[SENT_END]
 
-        if s:
-            if isinstance(s, tuple):
-                s = list(s)
-                to_tuple = True
-            else:
-                to_tuple = False
-
-            # apply padding
-            s_ = [start_symbol] * pad_l + s + [end_symbol] * pad_r
-
-            if to_tuple:
-                return tuple(s_)
-            else:
-                return s_
-        else:
-            if isinstance(s, tuple):
-                return tuple()
-            else:
-                return []
+        return pad_sequence(s, left=pad_l, right=pad_r, left_symbol=start_symbol, right_symbol=end_symbol,
+                            skip_empty=True)
 
     def convert_token_sequence(self, tok: Iterable[StrOrInt], collapse: Optional[str] = ' ') \
             -> Union[str, Tuple[StrOrInt, ...], List[StrOrInt]]:
@@ -406,7 +372,7 @@ class NGramModel:
             return tuple()
 
         if given is None:  # if given is not set, assume a sentence start
-            given = (SENT_START, ) * (self.n - 1)
+            given = (SENT_START,) * (self.n - 1)
         else:
             if isinstance(given, list):  # turn a token list into a token tuple
                 given = tuple(given)

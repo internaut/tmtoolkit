@@ -21,6 +21,7 @@
    api
    development
    version_history
+   references
 
 Indices and tables
 ==================

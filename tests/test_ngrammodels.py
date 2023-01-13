@@ -6,7 +6,8 @@ import pytest
 from hypothesis import given, strategies as st
 
 from tmtoolkit.corpus import Corpus, vocabulary
-from tmtoolkit.ngrammodels import NGramModel, SPECIAL_TOKENS, SENT_END, SENT_START, OOV
+from tmtoolkit.ngrammodels import NGramModel
+from tmtoolkit.tokenseq import OOV, SENT_START, SENT_END, SPECIAL_TOKENS
 from ._testtextdata import textdata_sm
 
 
