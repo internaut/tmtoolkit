@@ -1718,6 +1718,7 @@ def test_kwic_table_hypothesis(corpora_en_serial_and_parallel_module, **args):
     tokens_oov=st.booleans(),
     select=st.sampled_from([None, 'empty', 'small2', 'nonexistent', ['small1', 'small2'], []]),
     by_attr=st.sampled_from([None, 'pos', 'lemma']),
+    per_document=st.booleans(),
     tokens_as_hashes=st.booleans(),
     sparse_mat=st.booleans(),
     triu=st.booleans(),
@@ -1735,9 +1736,11 @@ def test_token_cooccurrence_hypothesis(corpora_en_serial_and_parallel_module, **
     random_seed = args.pop('random_seed')
     tokens_as_hashes = args['tokens_as_hashes']
     context_size = args['context_size']
+    per_document = args.pop('per_document')
+    attr = args['by_attr'] or 'token'
+
     symm_context = isinstance(context_size, int) or context_size[0] == context_size[1]
 
-    attr = args['by_attr'] or 'token'
     for corp in corpora_en_serial_and_parallel_module:
         csize = args['context_size']
         if (isinstance(csize, int) and csize <= 0) or \
@@ -1753,6 +1756,7 @@ def test_token_cooccurrence_hypothesis(corpora_en_serial_and_parallel_module, **
         else:
             vocab = list(c.vocabulary(corp, select=args['select'], by_attr=attr, tokens_as_hashes=tokens_as_hashes,
                                       sort=True))
+            vocab = [t for t in vocab if t not in {oov_str, oov_hash}]
             oov_added = None
 
             if tokens_given:
@@ -1779,17 +1783,52 @@ def test_token_cooccurrence_hypothesis(corpora_en_serial_and_parallel_module, **
                 with pytest.raises(ValueError, match='^`tokens` shall not contain duplicate elements$'):
                     c.token_cooccurrence(corp, tokens=tokens, **args)
             else:
-                res = c.token_cooccurrence(corp, tokens=tokens, **args)
+                if per_document:
+                    args_combined = args.copy()
+                    args_combined.update(dict(return_tokens=False, sparse_mat=False, as_table=False))
+                    combined = c.token_cooccurrence(corp, tokens=tokens, **args_combined)
+                    res = c.token_cooccurrence(corp, tokens=tokens, per_document=True, **args)
+                else:
+                    combined = None
+                    res = c.token_cooccurrence(corp, tokens=tokens, **args)
 
                 # return type
                 if args['return_tokens']:
                     assert isinstance(res, tuple)
                     assert len(res) == 2
-                    cooc, returned_tokens = res
-                    assert isinstance(returned_tokens, list)
+                    assert isinstance(res[1], list)
+
+                returned_tokens = None
+
+                if per_document:
+                    if args['return_tokens']:
+                        res, returned_tokens = res
+
+                    assert isinstance(res, dict)
+                    if args['select'] is not None:
+                        assert {args['select']} if isinstance(args['select'], str) else set(args['select']) == \
+                                                                                        set(res.keys())
+                    else:
+                        assert set(corp.keys()) == set(res.keys())
+
+                    matrices_per_doc = [m.to_numpy() if args['as_table'] else
+                                        (m.todense() if args['sparse_mat'] and not args['as_table'] else m)
+                                        for m in res.values()]
+                    assert np.all(np.sum(np.array(matrices_per_doc), axis=0) == combined)
+
+                    if len(corp) == 0:
+                        assert res == {}
+                        cooc = None
+                    else:
+                        if (tokens is not None and len(tokens) > 0) or len(vocab) > 0:
+                            cooc = next(iter(res.values()))   # use first item only for rest of test
+                        else:
+                            cooc = None
                 else:
-                    cooc = res
-                    returned_tokens = None
+                    if args['return_tokens']:
+                        cooc, returned_tokens = res
+                    else:
+                        cooc = res
 
                 del res
 
@@ -1799,6 +1838,9 @@ def test_token_cooccurrence_hypothesis(corpora_en_serial_and_parallel_module, **
                         assert returned_tokens == tokens
                     else:
                         assert returned_tokens == vocab
+
+                if cooc is None:
+                    continue
 
                 if not tokens_given:
                     tokens = vocab
@@ -1828,6 +1870,9 @@ def test_token_cooccurrence_hypothesis(corpora_en_serial_and_parallel_module, **
 
                 # shape
                 assert cooc.shape == (n_tok, n_tok)
+
+                if len(corp) == 0 and n_tok == 0:
+                    assert cooc.shape == (0, 0)
 
                 # symmetry when symmetric context size is given
                 if symm_context:
