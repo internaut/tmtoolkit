@@ -18,7 +18,7 @@ for pkg in ('spacy', 'bidict', 'loky'):
 
 from ..tokenseq import strip_tags, numbertoken_to_magnitude, simplify_unicode_chars
 
-from ._common import DEFAULT_LANGUAGE_MODELS, LANGUAGE_LABELS, simplified_pos
+from ._common import DEFAULT_LANGUAGE_MODELS, LANGUAGE_LABELS, STD_TOKEN_ATTRS, simplified_pos
 from ._document import Document, document_token_attr, document_from_attrs
 from ._corpus import Corpus
 

@@ -4084,6 +4084,7 @@ def _comparison_operator_from_str(which: str, common_alias=False, equal=True, wh
 
     if equal:
         op_table['=='] = operator.eq
+        op_table['='] = operator.eq
 
     if which not in op_table.keys():
         raise ValueError(f"`{whicharg}` must be one of {', '.join(op_table.keys())}")
