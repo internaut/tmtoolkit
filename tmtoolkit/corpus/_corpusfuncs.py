@@ -1503,16 +1503,21 @@ def token_cooccurrence(docs: Corpus,
                        tokens: Optional[Union[List[StrOrInt], np.ndarray]] = None,
                        select: Optional[Union[str, Collection[str]]] = None,
                        by_attr: Optional[str] = None,
+                       per_document: bool = False,
                        tokens_as_hashes: bool = False,
                        sparse_mat: bool = True,
                        triu: bool = False,
                        as_table: bool = False,
                        dtype: Union[str, np.dtype] = 'int32',
                        return_tokens: bool = False) \
-        -> Union[Union[sparse.csr_matrix, np.ndarray],
-                 Tuple[Union[sparse.csr_matrix, np.ndarray], List[StrOrInt]],
-                 pd.DataFrame,
-                 Tuple[pd.DataFrame, List[StrOrInt]]]:
+        -> Union[
+            # per_document = False
+            Union[sparse.csr_matrix, np.ndarray, pd.DataFrame],
+            Tuple[Union[sparse.csr_matrix, np.ndarray, pd.DataFrame], List[StrOrInt]],
+            # per_document = True
+            Dict[str, Union[sparse.csr_matrix, np.ndarray, pd.DataFrame]],
+            Tuple[Dict[str, Union[sparse.csr_matrix, np.ndarray, pd.DataFrame]], List[StrOrInt]],
+        ]:
     """
     Calculate a token cooccurrence matrix either for all unique tokens in a corpus or for a given set of tokens via
     `tokens` argument. The cooccurrences are counted within a context window specified via `context_size`. See
@@ -1535,6 +1540,8 @@ def token_cooccurrence(docs: Corpus,
     :param select: if not None, this can be a single string or a sequence of strings specifying a subset of `docs`
     :param by_attr: if not None, this should be an attribute name; this attribute data will then be
                     used for matching instead of the tokens in `docs`
+    :param per_document: if True, then compute a cooccurrence matrix for each document in `docs` separately and return
+                         the result as dictionary mapping the document label to the document's cooccurrence matrix
     :param tokens_as_hashes: if True assume that `tokens` are passed as token hashes integers
     :param sparse_mat: generate a sparse matrix in CSR format
     :param triu: return only the upper triangular of the cooccurrence matrix; only possible if `context_size` is
@@ -1544,7 +1551,8 @@ def token_cooccurrence(docs: Corpus,
     :param return_tokens: if True, return the tokens for which the cooccurrence matrix was computed as list; the order
                           of the items in that list corresponds to the rows and columns of the returned cooc. matrix
     :return: token cooc. matrix as sparse matrix, dense array, or pandas dataframe; optional list of tokens that
-             correspond to the rows and columns of that matrix
+             correspond to the rows and columns of that matrix; if `per_document` is True, return dict instead that
+             maps each document label its cooccurrence matrix
     """
     left, right = check_context_size(context_size)
 
@@ -1555,9 +1563,10 @@ def token_cooccurrence(docs: Corpus,
     by_attr = by_attr or 'token'
 
     try:
-        subset = _select_docs_attr(docs, by_attr, select=select, only_non_empty=True,
+        subset = _select_docs_attr(docs, by_attr, select=select,
                                    default=docs.custom_token_attrs_defaults.get(by_attr, None),
                                    as_hashes=True, as_array=True)
+        subset_nonempty = {lbl: tok for lbl, tok in subset.items() if len(tok) > 0}
     except AttributeError:
         raise AttributeError(f'attribute name "{by_attr}" does not exist')
 
@@ -1567,7 +1576,7 @@ def token_cooccurrence(docs: Corpus,
     tokens_cover_vocab = False
     if tokens is None:
         tokens_cover_vocab = True
-        token_hashes_set = set(flatten_list(subset.values()))
+        token_hashes_set = set(flatten_list(subset_nonempty.values()))
         if tokens_as_hashes:
             tokens = sorted(token_hashes_set)
             token_hashes = np.array(list(token_hashes_set), dtype='uint64')
@@ -1579,12 +1588,14 @@ def token_cooccurrence(docs: Corpus,
 
     n_tok = len(tokens)
 
-    if not subset or n_tok == 0:
+    if not subset_nonempty or n_tok == 0:
         empty_res = sparse.csr_matrix((n_tok, n_tok), dtype=dtype) if sparse_mat and not as_table \
             else np.zeros((n_tok, n_tok), dtype=dtype)
-
         if as_table:
             empty_res = pd.DataFrame(empty_res, index=tokens, columns=tokens, dtype=dtype)
+
+        if per_document:
+            empty_res = {lbl: empty_res for lbl in subset.keys()}
 
         if return_tokens:
             return empty_res, tokens.tolist() if isinstance(tokens, np.ndarray) else tokens
@@ -1605,44 +1616,60 @@ def token_cooccurrence(docs: Corpus,
     assert n_tok == len(token_hashes)
     assert isinstance(token_hashes, np.ndarray) and np.issubdtype(token_hashes.dtype, 'uint64')
 
-    @parallelexec(collect_fn=list)
+    @parallelexec(collect_fn=merge_dicts if per_document else list)
     def _parallel_token_cooc(chunk):
-        m = _token_cooccurrence_matrix(chunk.values(),
-                                       context_size=(left, right),
-                                       tokens=token_hashes,
-                                       tokens_cover_vocab=tokens_cover_vocab,
-                                       sparse_mat=sparse_mat,
-                                       triu=triu,
-                                       dtype=dtype)
-        # convert sparse matrix to CSR since we later add up multiple sparse matrices and DOK matrix addition converts
-        # each time to CSR anyway
-        return m.tocsr() if sparse_mat else m
+        common_args = dict(context_size=(left, right),
+                           tokens=token_hashes,
+                           tokens_cover_vocab=tokens_cover_vocab,
+                           sparse_mat=sparse_mat,
+                           triu=triu,
+                           dtype=dtype)
+
+        if per_document:
+            matrices = {}
+            for lbl, tok in chunk.items():
+                m = _token_cooccurrence_matrix([tok], **common_args)
+                matrices[lbl] = m.tocsr() if sparse_mat else m
+            return matrices
+        else:
+            m = _token_cooccurrence_matrix(chunk.values(), **common_args)
+            # convert sparse matrix to CSR since we later add up multiple sparse matrices and DOK matrix addition
+            # converts each time to CSR anyway
+            return m.tocsr() if sparse_mat else m
+
+    matrix2pd = lambda m: pd.DataFrame(m.todense() if sparse_mat else m, index=tokens, columns=tokens)
 
     # apply parallel computation
-    matrices = _parallel_token_cooc(_paralleltask(docs, subset))
+    matrices = _parallel_token_cooc(_paralleltask(docs, subset if per_document else subset_nonempty))
 
-    # note that `matrices` always contains at least one element since we always have at least one worker process
-    cooc_mat = None
-    empty_mat = None
-    for m in matrices:
-        if m.shape[0] > 0:
-            if cooc_mat is None:
-                cooc_mat = m
-            else:
-                cooc_mat += m
+    if per_document:
+        if as_table:
+            res = dict(zip(matrices.keys(), map(matrix2pd, matrices.values())))
         else:
-            empty_mat = m
+            res = matrices
+    else:
+        # note that `matrices` always contains at least one element since we always have at least one worker process
+        res = None
+        empty_mat = None
+        for m in matrices:
+            if m.shape[0] > 0:
+                if res is None:
+                    res = m
+                else:
+                    res += m
+            else:
+                empty_mat = m
 
-    if cooc_mat is None:
-        cooc_mat = empty_mat
+        if res is None:
+            res = empty_mat
 
-    if as_table:
-        cooc_mat = pd.DataFrame(cooc_mat.todense() if sparse_mat else cooc_mat, index=tokens, columns=tokens)
+        if as_table:
+            res = matrix2pd(res)
 
     if return_tokens:
-        return cooc_mat, tokens.tolist() if isinstance(tokens, np.ndarray) else tokens
+        return res, tokens.tolist() if isinstance(tokens, np.ndarray) else tokens
     else:
-        return cooc_mat
+        return res
 
 
 #%% Corpus I/O
@@ -4057,6 +4084,7 @@ def _comparison_operator_from_str(which: str, common_alias=False, equal=True, wh
 
     if equal:
         op_table['=='] = operator.eq
+        op_table['='] = operator.eq
 
     if which not in op_table.keys():
         raise ValueError(f"`{whicharg}` must be one of {', '.join(op_table.keys())}")
