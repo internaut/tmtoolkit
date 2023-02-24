@@ -409,7 +409,8 @@ class Corpus:
 
         :return: new Corpus object
         """
-        return self._deserialize(self._serialize(deepcopy_attrs=True, store_nlp_instance_pointer=True))
+        return self._deserialize(self._serialize(deepcopy_attrs=True, store_nlp_instance_pointer=True,
+                                                 store_workers_attrs=True))
 
     def __deepcopy__(self, memodict=None) -> Corpus:
         """
@@ -417,7 +418,8 @@ class Corpus:
 
         :return: new Corpus object
         """
-        return self._deserialize(self._serialize(deepcopy_attrs=True, store_nlp_instance_pointer=False))
+        return self._deserialize(self._serialize(deepcopy_attrs=True, store_nlp_instance_pointer=False,
+                                                 store_workers_attrs=True))
 
     def items(self) -> ItemsView[str, Document]:
         """
@@ -856,7 +858,7 @@ class Corpus:
             logger.debug(f'purging document assignments (parallel proc. disabled or empty corpus)')
             self._workers_docs = []
 
-    def _serialize(self, deepcopy_attrs: bool, store_nlp_instance_pointer: bool,
+    def _serialize(self, deepcopy_attrs: bool, store_nlp_instance_pointer: bool, store_workers_attrs: bool,
                    documents: Union[bool, Collection[str]] = True) \
             -> Dict[str, Any]:
         """
@@ -878,8 +880,8 @@ class Corpus:
         attr_deny = {'nlp', 'procexec', 'spacydocs', 'workers_docs',
                      '_docs', '_n_max_workers', '_workers_docs'}
 
-        if not attr_deny:
-            attr_deny.update('bimaps')
+        if not store_workers_attrs:
+            attr_deny.add('workers_timeout')
 
         # 1. general object attributes
         for attr in dir(self):
@@ -899,7 +901,8 @@ class Corpus:
             else:
                 state_attrs['state'][attr] = attr_obj
 
-        state_attrs['max_workers'] = self.max_workers
+        if store_workers_attrs:
+            state_attrs['max_workers'] = self.max_workers
 
         # 2. documents
         if documents is True:
@@ -940,9 +943,13 @@ class Corpus:
             raise ValueError('spacy_instance in serialized data must be either a language model name string or a '
                              '`Language` instance')
 
+        if 'max_workers' in data:
+            kwargs['max_workers'] = data['max_workers']
+        if 'workers_timeout' in data['state']:
+            kwargs['workers_timeout'] = data['state']['workers_timeout']
+
         # create the Corpus instance
-        instance = cls(max_workers=data['max_workers'], workers_timeout=data['state']['workers_timeout'],
-                       **kwargs)
+        instance = cls(**kwargs)
 
         # set all other properties
         for attr, val in data['state'].items():

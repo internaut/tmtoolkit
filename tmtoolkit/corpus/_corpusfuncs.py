@@ -1956,7 +1956,7 @@ def save_corpus_to_picklefile(docs: Corpus, picklefile: str) -> None:
     :param docs: a Corpus object
     :param picklefile: path to pickle file
     """
-    serdata = serialize_corpus(docs, deepcopy_attrs=False)
+    serdata = serialize_corpus(docs, deepcopy_attrs=False, store_workers_attrs=False)
     logger.debug('storing serialized data')
     pickle_data(serdata, picklefile)
 
@@ -2070,17 +2070,20 @@ def load_corpus_from_tokens_table(tokens: pd.DataFrame,
                                    **corpus_kwargs)
 
 
-def serialize_corpus(docs: Corpus, deepcopy_attrs: bool = True) -> Dict[str, Any]:
+def serialize_corpus(docs: Corpus, deepcopy_attrs: bool = True, store_workers_attrs: bool = False) -> Dict[str, Any]:
     """
     Serialize a Corpus object to a dict. The inverse operation is implemented in :func:`deserialize_corpus`.
 
     :param docs: a Corpus object
     :param deepcopy_attrs: apply *deep* copy to all attributes
+    :param store_workers_attrs: if True, store the number of maximum parallel worker processes and worker timeout
     :return: Corpus data serialized as dict
     """
     if logger.isEnabledFor(logging.INFO):
         logger.info(f'serializing Corpus with {len(docs)} documents')
-    return docs._serialize(deepcopy_attrs=deepcopy_attrs, store_nlp_instance_pointer=False)
+    return docs._serialize(deepcopy_attrs=deepcopy_attrs,
+                           store_nlp_instance_pointer=False,
+                           store_workers_attrs=store_workers_attrs)
 
 
 def deserialize_corpus(serialized_corpus_data: dict) -> Corpus:
@@ -2263,7 +2266,9 @@ def corpus_retokenize(docs: Corpus, collapse: Optional[str] = ' ', inplace: bool
         docs._docs = {}
     else:
         logger.info('making bare corpus copy')
-        docs = Corpus._deserialize(docs._serialize(deepcopy_attrs=False, store_nlp_instance_pointer=True,
+        docs = Corpus._deserialize(docs._serialize(deepcopy_attrs=False,
+                                                   store_nlp_instance_pointer=True,
+                                                   store_workers_attrs=True,
                                                    documents=False))
 
     logger.info('re-parsing document texts')
@@ -3644,7 +3649,9 @@ def corpus_split_by_token(docs: Corpus, /, split: str, new_doc_label_fmt: str = 
             del docs[lbl]
     else:  # make a copy without the old documents
         logger.debug('copying corpus without old documents')
-        docs = Corpus._deserialize(docs._serialize(deepcopy_attrs=True, store_nlp_instance_pointer=True,
+        docs = Corpus._deserialize(docs._serialize(deepcopy_attrs=True,
+                                                   store_nlp_instance_pointer=True,
+                                                   store_workers_attrs=True,
                                                    documents=set(doc_labels(docs, sort=False)) - set(remove_docs)))
 
     # add split documents
@@ -3773,7 +3780,9 @@ def corpus_join_documents(docs: Corpus, /, join: Dict[str, Union[str, List[str]]
             del docs[lbl]
     else:  # make a copy without the matched documents
         logger.debug('copying corpus without matched documents')
-        docs = Corpus._deserialize(docs._serialize(deepcopy_attrs=True, store_nlp_instance_pointer=True,
+        docs = Corpus._deserialize(docs._serialize(deepcopy_attrs=True,
+                                                   store_nlp_instance_pointer=True,
+                                                   store_workers_attrs=True,
                                                    documents=set(doc_labels(docs, sort=False)) - old_docs))
 
     # add joint documents

@@ -40,9 +40,10 @@ from tmtoolkit.corpus._corpusfuncs import _token_cooccurrence_matrix
 from ._testtools import strategy_str_str_dict_printable, strategy_lists_of_int_tokens, strategy_lists_of_tokens
 from ._testtextdata import textdata_sm
 
-DATADIR = os.path.join('tests', 'data')
-DATADIR_GUTENB = os.path.join(DATADIR, 'gutenberg')
-DATADIR_WERTHER = os.path.join(DATADIR_GUTENB, 'werther')
+ROOT = os.path.dirname(__file__)
+DATADIR = os.path.join(ROOT, 'data')
+DATADIR_GUTENB = os.path.join(ROOT, DATADIR, 'gutenberg')
+DATADIR_WERTHER = os.path.join(ROOT ,DATADIR_GUTENB, 'werther')
 
 installed_lang = set(model[:2] for model in get_installed_models())
 textdata_en = textdata_sm['en']
@@ -1820,7 +1821,7 @@ def test_token_cooccurrence_hypothesis(corpora_en_serial_and_parallel_module, **
                         assert res == {}
                         cooc = None
                     else:
-                        if (tokens is not None and len(tokens) > 0) or len(vocab) > 0:
+                        if (res and tokens is not None and len(tokens) > 0) or len(vocab) > 0:
                             cooc = next(iter(res.values()))   # use first item only for rest of test
                         else:
                             cooc = None
@@ -1985,7 +1986,7 @@ def test_save_load_corpus(corpora_en_serial_and_parallel_module):
             ftemp.seek(0)
             unpickled_corp = c.load_corpus_from_picklefile(ftemp)
 
-            _check_copies(corp, unpickled_corp, same_nlp_instance=False)
+            _check_copies(corp, unpickled_corp, same_nlp_instance=False, same_workers_attrs=False)
 
 
 @settings(deadline=None)
@@ -2119,15 +2120,20 @@ def test_load_corpus_from_tokens_table(corpora_en_serial_and_parallel, with_orig
                 assert corp.nlp is not corp2.nlp
 
 
-@pytest.mark.parametrize('deepcopy_attrs', (False, True))
-def test_serialize_deserialize_corpus(corpora_en_serial_and_parallel_module, deepcopy_attrs):
+@pytest.mark.parametrize('deepcopy_attrs, store_workers_attrs', [
+    (False, False),
+    (False, True),
+    (True, False),
+    (True, True),
+])
+def test_serialize_deserialize_corpus(corpora_en_serial_and_parallel_module, deepcopy_attrs, store_workers_attrs):
     for corp in corpora_en_serial_and_parallel_module:
-        ser_corp = c.serialize_corpus(corp, deepcopy_attrs=deepcopy_attrs)
+        ser_corp = c.serialize_corpus(corp, deepcopy_attrs=deepcopy_attrs, store_workers_attrs=store_workers_attrs)
         assert isinstance(ser_corp, dict)
         corp2 = c.deserialize_corpus(ser_corp)
         assert isinstance(corp2, c.Corpus)
 
-        _check_copies(corp, corp2, same_nlp_instance=False)
+        _check_copies(corp, corp2, same_nlp_instance=False, same_workers_attrs=store_workers_attrs)
 
 
 @pytest.mark.parametrize('testtype, files, doc_label_fmt, inplace', [
@@ -3614,8 +3620,10 @@ def test__token_cooccurrence_matrix(docs, context_size, tokens, tokens_oov, spar
 
     if tokens is None:
         tokens = sorted(set(flat_docs))
+        tokens_cover_vocab = True
     else:
         tokens = list(vocab)
+        tokens_cover_vocab = False
 
     if tokens:
         if tokens_oov:
@@ -3627,7 +3635,8 @@ def test__token_cooccurrence_matrix(docs, context_size, tokens, tokens_oov, spar
             if oov_added is not None:
                 tokens.append(oov_added)
 
-    args = dict(docs=docs, context_size=context_size, tokens=tokens, sparse_mat=sparse_mat, triu=triu, dtype=dtype)
+    args = dict(docs=docs, context_size=context_size, tokens=tokens, sparse_mat=sparse_mat, triu=triu, dtype=dtype,
+                tokens_cover_vocab=tokens_cover_vocab)
 
     if not symm_context and triu:
         with pytest.raises(AssertionError):
@@ -3783,8 +3792,8 @@ def _check_corpus_docs(corp: c.Corpus, has_sents: bool):
         assert len(tok) == len(d)
 
 
-def _check_copies(corp_a, corp_b, same_nlp_instance):
-    _check_copies_attrs(corp_a, corp_b, same_nlp_instance=same_nlp_instance)
+def _check_copies(corp_a, corp_b, same_nlp_instance, same_workers_attrs=True):
+    _check_copies_attrs(corp_a, corp_b, same_nlp_instance=same_nlp_instance, same_workers_attrs=same_workers_attrs)
 
     # check if tokens are the same
     tok_a = c.doc_tokens(corp_a)
@@ -3795,7 +3804,8 @@ def _check_copies(corp_a, corp_b, same_nlp_instance):
     assert _dataframes_equal(c.tokens_table(corp_a), c.tokens_table(corp_b))
 
 
-def _check_copies_attrs(corp_a, corp_b, check_attrs=None, dont_check_attrs=None, same_nlp_instance=True):
+def _check_copies_attrs(corp_a, corp_b, check_attrs=None, dont_check_attrs=None,
+                        same_nlp_instance=True, same_workers_attrs=True):
     attrs_a = dir(corp_a)
     attrs_b = dir(corp_b)
 
@@ -3803,7 +3813,10 @@ def _check_copies_attrs(corp_a, corp_b, check_attrs=None, dont_check_attrs=None,
     if check_attrs is None:
         check_attrs = {'uses_unigrams', 'token_attrs', 'custom_token_attrs_defaults', 'doc_attrs',
                        'doc_attrs_defaults', 'ngrams', 'ngrams_join_str', 'language', 'language_model',
-                       'doc_labels', 'n_docs', 'workers_docs', 'max_workers', 'raw_preproc'}
+                       'doc_labels', 'n_docs', 'raw_preproc'}
+
+    if same_workers_attrs:
+        check_attrs.update({'max_workers', 'workers_timeout', 'workers_docs'})
 
     if dont_check_attrs is not None:
         check_attrs.difference_update(dont_check_attrs)
