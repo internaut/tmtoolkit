@@ -987,7 +987,7 @@ def tokens_table(docs: Corpus,
 
 
 def corpus_tokens_flattened(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None,
-                            sentences: bool = False, tokens_as_hashes: bool = False,
+                            sentences: bool = False, by_attr: Optional[str] = None, tokens_as_hashes: bool = False,
                             as_array: bool = False, force_unigrams: bool = False) -> Union[list, np.ndarray]:
     """
     Return tokens (or token hashes) from `docs` as flattened list, simply concatenating  all documents.
@@ -995,6 +995,8 @@ def corpus_tokens_flattened(docs: Corpus, select: Optional[Union[str, Collection
     :param docs: a Corpus object
     :param select: if not None, this can be a single string or a sequence of strings specifying a subset of `docs`
     :param sentences: divide results into sentences; if True, the result will consist of a list of sentences
+    :param by_attr: if not None, this should be an attribute name; this attribute data will then be
+                    used instead of the tokens in `docs`
     :param tokens_as_hashes: passed to :func:`doc_tokens`; if True, return token hashes instead of string tokens
     :param as_array: if True, return NumPy array instead of list
     :param force_unigrams: ignore n-grams setting if `docs` is a Corpus with ngrams and always return unigrams
@@ -1005,7 +1007,7 @@ def corpus_tokens_flattened(docs: Corpus, select: Optional[Union[str, Collection
     if isinstance(select, str):  # force doc_tokens output as dict
         select = [select]
 
-    tok = doc_tokens(docs, select=select, sentences=sentences, only_non_empty=True,
+    tok = doc_tokens(docs, select=select, sentences=sentences, only_non_empty=True, by_attr=by_attr,
                      tokens_as_hashes=tokens_as_hashes, as_arrays=as_array, force_unigrams=force_unigrams)
 
     dtype = 'uint64' if tokens_as_hashes else 'str'

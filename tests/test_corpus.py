@@ -935,14 +935,15 @@ def test_spacydocs(corpora_en_serial_and_parallel_also_w_vectors_module, select,
 
 @settings(deadline=None)
 @given(select=st.sampled_from([None, 'empty', 'small2', 'nonexistent', ['small1', 'small2'], []]),
+       by_attr=st.sampled_from([None, 'pos', 'lemma']),
        tokens_as_hashes=st.booleans(),
        force_unigrams=st.booleans(),
        sort=st.booleans(),
        convert_uint64hashes=st.booleans())
-def test_vocabulary_hypothesis(corpora_en_serial_and_parallel_module, select, tokens_as_hashes, force_unigrams, sort,
-                               convert_uint64hashes):
-    kwargs = dict(select=select, tokens_as_hashes=tokens_as_hashes, force_unigrams=force_unigrams, sort=sort,
-                  convert_uint64hashes=convert_uint64hashes)
+def test_vocabulary_hypothesis(corpora_en_serial_and_parallel_module, select, by_attr, tokens_as_hashes, force_unigrams,
+                               sort, convert_uint64hashes):
+    kwargs = dict(select=select, by_attr=by_attr, tokens_as_hashes=tokens_as_hashes, force_unigrams=force_unigrams,
+                  sort=sort, convert_uint64hashes=convert_uint64hashes)
 
     for corp in corpora_en_serial_and_parallel_module:
         if select == 'nonexistent' or (select not in (None, []) and len(corp) == 0):
@@ -963,11 +964,12 @@ def test_vocabulary_hypothesis(corpora_en_serial_and_parallel_module, select, to
                 else:
                     assert len(res) > 0
 
-                if select == 'small2' and not tokens_as_hashes:
+                if select == 'small2' and not tokens_as_hashes and not by_attr:
                     assert set(res) == {'This', 'is', 'a', 'small', 'example', 'document', '.'}
 
                 if select != 'empty':
-                    corp_flat = c.corpus_tokens_flattened(corp, select=select, tokens_as_hashes=tokens_as_hashes)
+                    corp_flat = c.corpus_tokens_flattened(corp, select=select, by_attr=by_attr,
+                                                          tokens_as_hashes=tokens_as_hashes)
                     assert all(t in corp_flat for t in res)
 
                 if not convert_uint64hashes and tokens_as_hashes and select is None:
@@ -1118,9 +1120,11 @@ def test_tokens_table_hypothesis(corpora_en_serial_and_parallel_module, **args):
 @settings(deadline=None)
 @given(select=st.sampled_from([None, 'empty', 'small2', 'nonexistent', ['small1', 'small2'], []]),
        sentences=st.booleans(),
+       by_attr=st.sampled_from([None, 'pos', 'lemma']),
        tokens_as_hashes=st.booleans(),
        as_array=st.booleans())
-def test_corpus_tokens_flattened(corpora_en_serial_and_parallel_module, select, sentences, tokens_as_hashes, as_array):
+def test_corpus_tokens_flattened(corpora_en_serial_and_parallel_module, select, sentences, by_attr, tokens_as_hashes,
+                                 as_array):
     def _check_tokens(tok, vocab):
         if as_array:
             assert isinstance(tok, np.ndarray)
@@ -1133,7 +1137,8 @@ def test_corpus_tokens_flattened(corpora_en_serial_and_parallel_module, select, 
 
         assert set(tok) <= vocab
 
-    kwargs = dict(select=select, sentences=sentences, tokens_as_hashes=tokens_as_hashes, as_array=as_array)
+    kwargs = dict(select=select, sentences=sentences, by_attr=by_attr, tokens_as_hashes=tokens_as_hashes,
+                  as_array=as_array)
     for corp in corpora_en_serial_and_parallel_module:
         if select == 'nonexistent' or (select not in (None, []) and len(corp) == 0):
             with pytest.raises(KeyError):
@@ -1143,7 +1148,7 @@ def test_corpus_tokens_flattened(corpora_en_serial_and_parallel_module, select, 
                 c.corpus_tokens_flattened(corp, **kwargs)
         else:
             res = c.corpus_tokens_flattened(corp, **kwargs)
-            vocab = c.vocabulary(corp, tokens_as_hashes=tokens_as_hashes, sort=False)
+            vocab = c.vocabulary(corp, by_attr=by_attr, tokens_as_hashes=tokens_as_hashes, sort=False)
 
             if sentences:
                 assert isinstance(res, list)
