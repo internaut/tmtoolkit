@@ -746,27 +746,39 @@ def test_doc_labels_sample(corpora_en_serial_and_parallel_module, n):
 @settings(deadline=None)
 @given(collapse=st.sampled_from([None, ' ', '__']),
        select=st.sampled_from([None, 'empty', 'small2', 'nonexistent', ['small1', 'small2'], []]),
+       by_attr=st.sampled_from([None, 'pos', 'lemma']),
        as_table=st.sampled_from([False, True, 'text']))
-def test_doc_texts(corpora_en_serial_and_parallel_module, collapse, select, as_table):
+def test_doc_texts(corpora_en_serial_and_parallel_module, collapse, select, by_attr, as_table):
     expected = {
-        ' ': {
-            'empty': '',
-            'small1': 'the',
-            'small2': 'This is a small example document .'
+        None: {
+            ' ': {
+                'empty': '',
+                'small1': 'the',
+                'small2': 'This is a small example document .'
+            },
+            '__': {
+                'empty': '',
+                'small1': 'the',
+                'small2': 'This__is__a__small__example__document__.'
+            }
         },
-        '__': {
-            'empty': '',
-            'small1': 'the',
-            'small2': 'This__is__a__small__example__document__.'
+        'pos': {
+            ' ': {'empty': '', 'small1': 'PRON', 'small2': 'PRON AUX DET ADJ NOUN NOUN PUNCT'},
+            '__': {
+                'empty': '',
+                'small1': 'PRON',
+                'small2': 'PRON__AUX__DET__ADJ__NOUN__NOUN__PUNCT'
+            }
         }
     }
+    args = dict(select=select, by_attr=by_attr, collapse=collapse, as_table=as_table)
 
     for corp in corpora_en_serial_and_parallel_module:
         if select == 'nonexistent' or (select not in (None, []) and len(corp) == 0):
             with pytest.raises(KeyError):
-                c.doc_texts(corp, select=select, collapse=collapse, as_table=as_table)
+                c.doc_texts(corp, **args)
         else:
-            res = c.doc_texts(corp, select=select, collapse=collapse, as_table=as_table)
+            res = c.doc_texts(corp, **args)
 
             if as_table is False:
                 assert isinstance(res, dict)
@@ -777,11 +789,10 @@ def test_doc_texts(corpora_en_serial_and_parallel_module, collapse, select, as_t
 
                 for lbl, txt in res.items():
                     assert isinstance(txt, str)
-                    if collapse is None:
+                    if collapse is None and by_attr is None:
                         assert txt == textdata_en[lbl]
-                    else:
-                        if lbl in expected[collapse]:
-                            assert txt == expected[collapse][lbl]
+                    elif collapse is not None and by_attr in expected and lbl in expected[by_attr][collapse]:
+                        assert txt == expected[by_attr][collapse][lbl]
             else:
                 assert isinstance(res, pd.DataFrame)
                 if select is None:

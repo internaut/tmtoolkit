@@ -573,8 +573,11 @@ def doc_labels_sample(docs: Corpus, n: int) -> Set[str]:
 
 
 @tabular_result_option('doc', 'text')
-def doc_texts(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None, collapse: Optional[str] = None,
-              n_tokens: Optional[int] = None, as_table: Union[bool, str] = False) \
+def doc_texts(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None,
+              by_attr: Optional[str] = None,
+              collapse: Optional[str] = None,
+              n_tokens: Optional[int] = None,
+              as_table: Union[bool, str] = False) \
         -> Union[Dict[str, str], pd.DataFrame]:
     """
     Return reconstructed document text from documents in `docs`. By default, uses whitespace token attribute to collapse
@@ -582,6 +585,8 @@ def doc_texts(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None
 
     :param docs: a Corpus object
     :param select: if not None, this can be a single string or a sequence of strings specifying the documents to fetch
+    :param by_attr: if not None, this should be an attribute name; this attribute data will then be
+                    used instead of the tokens in `docs`
     :param collapse: if None, use whitespace token attribute for collapsing tokens, otherwise use custom string
     :param n_tokens: max. number of tokens to retrieve from each document; if None (default), retrieve all tokens
     :param as_table: if True, return result as dataframe; if a string, sort dataframe by this column; if string prefixed
@@ -593,18 +598,19 @@ def doc_texts(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None
         texts = {}
         for lbl, tok in tokens.items():
             if collapse is None:
-                texts[lbl] = collapse_tokens(tok['token'], tok['whitespace'])
+                texts[lbl] = collapse_tokens(tok[by_attr or 'token'], tok['whitespace'])
             else:
                 texts[lbl] = collapse_tokens(tok, collapse)
 
         return texts
 
     select = _single_str_to_set(select)   # force doc_tokens output as dict
+    args = dict(select=select, by_attr=by_attr, n_tokens=n_tokens)
 
     if collapse is None:
-        tokdata = doc_tokens(docs, select=select, n_tokens=n_tokens, with_attr='whitespace')
+        tokdata = doc_tokens(docs, **args, with_attr='whitespace')
     else:
-        tokdata = doc_tokens(docs, select=select, n_tokens=n_tokens)
+        tokdata = doc_tokens(docs, **args)
 
     return _doc_texts(_paralleltask(docs, tokdata,
                                     force_serialproc=(n_tokens is not None and n_tokens < 1000) or len(docs) < 1000),
