@@ -1328,12 +1328,13 @@ def test_print_summary(capsys, corpora_en_serial_and_parallel_module):
 
 @settings(deadline=None)
 @given(select=st.sampled_from([None, 'empty', 'small2', 'nonexistent', ['small1', 'small2'], []]),
+       by_attr=st.sampled_from([None, 'pos', 'lemma']),
        as_table=st.booleans(),
        dtype=st.sampled_from([None, 'uint16', 'float64']),
        return_doc_labels=st.booleans(),
        return_vocab=st.booleans())
-def test_dtm(corpora_en_serial_and_parallel_module, select, as_table, dtype, return_doc_labels, return_vocab):
-    kwargs = dict(select=select, as_table=as_table, dtype=dtype,
+def test_dtm(corpora_en_serial_and_parallel_module, select, by_attr, as_table, dtype, return_doc_labels, return_vocab):
+    kwargs = dict(select=select, by_attr=by_attr, as_table=as_table, dtype=dtype,
                   return_doc_labels=return_doc_labels, return_vocab=return_vocab)
 
     for corp in corpora_en_serial_and_parallel_module:
@@ -1343,7 +1344,7 @@ def test_dtm(corpora_en_serial_and_parallel_module, select, as_table, dtype, ret
         else:
             res = c.dtm(corp, **kwargs)
 
-            expected_vocab = c.vocabulary(corp, select=select, sort=True)
+            expected_vocab = c.vocabulary(corp, select=select, by_attr=by_attr, sort=True)
             if select is None:
                 expected_labels = c.doc_labels(corp, sort=True)
             elif isinstance(select, str):
@@ -1383,7 +1384,7 @@ def test_dtm(corpora_en_serial_and_parallel_module, select, as_table, dtype, ret
                 assert dtm.index.tolist() == expected_labels
                 assert dtm.columns.tolist() == expected_vocab
 
-                if len(corp) > 0 and select is None:
+                if len(corp) > 0 and select is None and by_attr is None:
                     assert np.sum(dtm.iloc[expected_labels.index('empty'), :]) == 0
                     assert np.sum(dtm.iloc[:, expected_vocab.index('the')]) > 1
                     assert dtm.iloc[expected_labels.index('small1'), expected_vocab.index('the')] == 1
@@ -1391,7 +1392,7 @@ def test_dtm(corpora_en_serial_and_parallel_module, select, as_table, dtype, ret
                 assert isinstance(dtm, csr_matrix)
                 assert dtm.dtype == np.dtype(dtype or 'int32')
 
-                if len(corp) > 0 and select is None:
+                if len(corp) > 0 and select is None and by_attr is None:
                     assert np.sum(dtm[expected_labels.index('empty'), :]) == 0
                     assert np.sum(dtm[:, expected_vocab.index('the')]) > 1
                     assert dtm[expected_labels.index('small1'), expected_vocab.index('the')] == 1

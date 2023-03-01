@@ -1230,7 +1230,8 @@ def print_summary(docs: Corpus,
                          max_tokens_string_length=max_tokens_string_length))
 
 
-def dtm(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None, as_table: bool = False,
+def dtm(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None,
+        by_attr: Optional[str] = None, as_table: bool = False,
         tokens_as_hashes: bool = False, dtype: Optional[Union[str, np.dtype]] = None,
         return_doc_labels: bool = False, return_vocab: bool = False) \
         -> Union[sparse.csr_matrix,
@@ -1249,6 +1250,8 @@ def dtm(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None, as_t
 
     :param docs: a Corpus object
     :param select: if not None, this can be a single string or a sequence of strings specifying a subset of `docs`
+    :param by_attr: if not None, this should be an attribute name; this attribute data will then be
+                    used instead of the tokens in `docs`
     :param as_table: return result as dense pandas DataFrame
     :param tokens_as_hashes: if True, return token type hashes (integers) instead of textual representations (strings)
                              in the vocabulary
@@ -1271,7 +1274,7 @@ def dtm(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None, as_t
 
     select = _single_str_to_set(select)
     logger.debug('getting tokens')
-    tokens = doc_tokens(docs, tokens_as_hashes=tokens_as_hashes, select=select)
+    tokens = doc_tokens(docs, by_attr=by_attr, tokens_as_hashes=tokens_as_hashes, select=select)
 
     if logger.isEnabledFor(logging.INFO):
         logger.info(f'generating sparse DTM with {len(tokens)} documents and '
