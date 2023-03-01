@@ -613,6 +613,7 @@ def doc_texts(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None
 
 @tabular_result_option('token', 'freq')
 def doc_frequencies(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None,
+                    by_attr: Optional[str] = None,
                     tokens_as_hashes: bool = False, force_unigrams: bool = False,
                     proportions: Proportion = Proportion.NO,
                     as_table: Union[bool, str] = False) \
@@ -637,6 +638,8 @@ def doc_frequencies(docs: Corpus, select: Optional[Union[str, Collection[str]]] 
 
     :param docs: a :class:`Corpus` object
     :param select: if not None, this can be a single string or a sequence of strings specifying a subset of `docs`
+    :param by_attr: if not None, this should be an attribute name; this attribute data will then be
+                    used instead of the tokens in `docs`
     :param tokens_as_hashes: if True, return token type hashes (integers) instead of textual representations (strings)
     :param force_unigrams: ignore n-grams setting if `docs` is a Corpus with ngrams and always return unigrams
     :param proportions: one of :attr:`~tmtoolkit.types.Proportion`: ``NO (0)`` – return counts; ``YES (1)`` – return
@@ -651,7 +654,8 @@ def doc_frequencies(docs: Corpus, select: Optional[Union[str, Collection[str]]] 
         raise ValueError('supplied `docs` Corpus object uses n-grams; `tokens_as_hashes` must be False in that case')
 
     select = _single_str_to_set(select)  # force doc_tokens output as dict
-    tokens = doc_tokens(docs, select=select, tokens_as_hashes=result_uses_hashes, force_unigrams=force_unigrams)
+    tokens = doc_tokens(docs, select=select, by_attr=by_attr, tokens_as_hashes=result_uses_hashes,
+                        force_unigrams=force_unigrams)
 
     if not tokens:   # empty corpus -> no doc. frequencies (prevent log(0) domain error)
         return {}
@@ -669,7 +673,7 @@ def doc_frequencies(docs: Corpus, select: Optional[Union[str, Collection[str]]] 
     if tokens_as_hashes or not result_uses_hashes:
         return dict(zip(hashes, counts))
     else:
-        return {docs.bimaps['token'][h]: n for h, n in zip(hashes, counts)}
+        return {docs.bimaps[by_attr or 'token'][h]: n for h, n in zip(hashes, counts)}
 
 
 def doc_vectors(docs: Union[Corpus, Dict[str, Doc]], select: Optional[Union[str, Collection[str]]] = None,

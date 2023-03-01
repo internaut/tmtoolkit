@@ -790,44 +790,46 @@ def test_doc_texts(corpora_en_serial_and_parallel_module, collapse, select, as_t
                     assert set(res['doc']) == ({select} if isinstance(select, str) else set(select))
 
 
-
 @settings(deadline=None)
 @given(proportions=st.sampled_from([0, 1, 2]),
        select=st.sampled_from([None, 'empty', 'small2', 'nonexistent', ['small1', 'small2'], []]),
+       by_attr=st.sampled_from([None, 'pos', 'lemma']),
        as_table=st.sampled_from([False, True, 'freq']))
-def test_doc_frequencies(corpora_en_serial_and_parallel_module, proportions, select, as_table):
+def test_doc_frequencies(corpora_en_serial_and_parallel_module, proportions, select, by_attr, as_table):
+    args = dict(select=select, by_attr=by_attr, proportions=proportions, as_table=as_table)
+
     for corp in corpora_en_serial_and_parallel_module:
         if select == 'nonexistent' or (select not in (None, []) and len(corp) == 0):
             with pytest.raises(KeyError):
-                c.doc_frequencies(corp, select=select, proportions=proportions, as_table=as_table)
+                c.doc_frequencies(corp, **args)
         else:
-            res = c.doc_frequencies(corp, select=select, proportions=proportions, as_table=as_table)
+            res = c.doc_frequencies(corp, **args)
 
             if as_table is False:
                 assert isinstance(res, dict)
-                assert set(res.keys()) == c.vocabulary(corp, select=select, sort=False)
+                assert set(res.keys()) == c.vocabulary(corp, select=select, by_attr=by_attr, sort=False)
 
                 if len(corp) > 0 and select not in ('empty', []):
                     if proportions == 1:
                         # proportions
                         assert all([0 < v <= 1 for v in res.values()])
-                        if select is None:
+                        if select is None and by_attr is None:
                             assert np.isclose(res['the'], 5/9)
                     elif proportions == 2:
                         # log proportions
                         assert all([v <= 0 for v in res.values()])
                         assert all([0 < 10**v <= 1 for v in res.values()])
-                        if select is None:
+                        if select is None and by_attr is None:
                             assert np.isclose(res['the'], math.log10(5/9))
                     else:
                         # counts
                         assert all([0 < v < len(corp) for v in res.values()])
                         assert any([v > 0 for v in res.values()])
-                        if select is None:
+                        if select is None and by_attr is None:
                             assert res['the'] == 5
             else:
                 assert isinstance(res, pd.DataFrame)
-                assert set(res['token']) == c.vocabulary(corp, select=select, sort=False)
+                assert set(res['token']) == c.vocabulary(corp, by_attr=by_attr, select=select, sort=False)
 
 
 @pytest.mark.skipif('en_core_web_md' not in spacy.util.get_installed_models(),
