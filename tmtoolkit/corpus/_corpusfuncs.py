@@ -204,7 +204,7 @@ def tabular_result_option(key: str, value: str) -> Callable:
     def deco_fn(fn):
         @wraps(fn)
         def inner_fn(*args, **kwargs):
-            if not isinstance(args[0], Corpus):
+            if not args or not isinstance(args[0], Corpus):
                 raise ValueError('first argument must be a Corpus object')
 
             if 'as_table' in kwargs:
@@ -814,6 +814,7 @@ def vocabulary(docs: Corpus, select: Optional[Union[str, Collection[str]]] = Non
 
 @tabular_result_option(key='token', value='freq')
 def vocabulary_counts(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None,
+                      by_attr: Optional[str] = None,
                       proportions: Proportion = Proportion.NO,
                       tokens_as_hashes: bool = False, force_unigrams: bool = False,
                       convert_uint64hashes: bool = True, as_table: Union[bool, str] = False) \
@@ -824,6 +825,8 @@ def vocabulary_counts(docs: Corpus, select: Optional[Union[str, Collection[str]]
 
     :param docs: a :class:`Corpus` object
     :param select: if not None, this can be a single string or a sequence of strings specifying a subset of `docs`
+    :param by_attr: if not None, this should be an attribute name; this attribute data will then be
+                    used instead of the tokens in `docs`
     :param proportions: one of :attr:`~tmtoolkit.types.Proportion`: ``NO (0)`` – return counts; ``YES (1)`` – return
                         proportions; ``LOG (2)`` – return log10 of proportions
     :param tokens_as_hashes: if True, return token type hashes (integers) instead of textual representations (strings)
@@ -841,7 +844,8 @@ def vocabulary_counts(docs: Corpus, select: Optional[Union[str, Collection[str]]
 
     if isinstance(select, str):   # force doc_tokens output as dict
         select = [select]
-    tok = doc_tokens(docs, select=select, tokens_as_hashes=result_uses_hashes, force_unigrams=force_unigrams)
+    tok = doc_tokens(docs, select=select, by_attr=by_attr, tokens_as_hashes=result_uses_hashes,
+                     force_unigrams=force_unigrams)
 
     if not tok:  # shortcut
         return {}
@@ -860,7 +864,7 @@ def vocabulary_counts(docs: Corpus, select: Optional[Union[str, Collection[str]]
             hashes = hashes.tolist()
         return dict(zip(hashes, counts))
     else:
-        return {docs.bimaps['token'][h]: n for h, n in zip(hashes, counts)}
+        return {docs.bimaps[by_attr or 'token'][h]: n for h, n in zip(hashes, counts)}
 
 
 def vocabulary_size(docs: Union[Corpus, Dict[str, List[str]]], select: Optional[Union[str, Collection[str]]] = None,

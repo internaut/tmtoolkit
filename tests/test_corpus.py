@@ -998,14 +998,15 @@ def test_vocabulary_hypothesis(corpora_en_serial_and_parallel_module, select, by
 
 @settings(deadline=None)
 @given(select=st.sampled_from([None, 'empty', 'small2', 'nonexistent', ['small1', 'small2'], []]),
+       by_attr=st.sampled_from([None, 'pos', 'lemma']),
        proportions=st.sampled_from([0, 1, 2]),
        tokens_as_hashes=st.booleans(),
        force_unigrams=st.booleans(),
        convert_uint64hashes=st.booleans(),
        as_table=st.sampled_from([False, True, 'freq']))
-def test_vocabulary_counts(corpora_en_serial_and_parallel_module, select, proportions, tokens_as_hashes, force_unigrams,
-                           convert_uint64hashes, as_table):
-    kwargs = dict(select=select, proportions=proportions, tokens_as_hashes=tokens_as_hashes,
+def test_vocabulary_counts(corpora_en_serial_and_parallel_module, select, by_attr, proportions, tokens_as_hashes,
+                           force_unigrams, convert_uint64hashes, as_table):
+    kwargs = dict(select=select, by_attr=by_attr, proportions=proportions, tokens_as_hashes=tokens_as_hashes,
                   force_unigrams=force_unigrams, convert_uint64hashes=convert_uint64hashes, as_table=as_table)
 
     for corp in corpora_en_serial_and_parallel_module:
@@ -1014,7 +1015,7 @@ def test_vocabulary_counts(corpora_en_serial_and_parallel_module, select, propor
                 c.vocabulary_counts(corp, **kwargs)
         else:
             res = c.vocabulary_counts(corp, **kwargs)
-            vocab = c.vocabulary(corp, select=select, tokens_as_hashes=tokens_as_hashes,
+            vocab = c.vocabulary(corp, select=select, by_attr=by_attr, tokens_as_hashes=tokens_as_hashes,
                                  force_unigrams=force_unigrams, sort=False)
 
             if as_table is False:
@@ -1037,7 +1038,8 @@ def test_vocabulary_counts(corpora_en_serial_and_parallel_module, select, propor
                         assert all([isinstance(t, expect_type) for t in res.keys()])
 
                     if select != 'empty':
-                        corp_flat = c.corpus_tokens_flattened(corp, select=select, tokens_as_hashes=tokens_as_hashes)
+                        corp_flat = c.corpus_tokens_flattened(corp, select=select, by_attr=by_attr,
+                                                              tokens_as_hashes=tokens_as_hashes)
                         assert all(t in corp_flat for t in res.keys())
 
                     if proportions == 0:
