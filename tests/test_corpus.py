@@ -746,27 +746,39 @@ def test_doc_labels_sample(corpora_en_serial_and_parallel_module, n):
 @settings(deadline=None)
 @given(collapse=st.sampled_from([None, ' ', '__']),
        select=st.sampled_from([None, 'empty', 'small2', 'nonexistent', ['small1', 'small2'], []]),
+       by_attr=st.sampled_from([None, 'pos', 'lemma']),
        as_table=st.sampled_from([False, True, 'text']))
-def test_doc_texts(corpora_en_serial_and_parallel_module, collapse, select, as_table):
+def test_doc_texts(corpora_en_serial_and_parallel_module, collapse, select, by_attr, as_table):
     expected = {
-        ' ': {
-            'empty': '',
-            'small1': 'the',
-            'small2': 'This is a small example document .'
+        None: {
+            ' ': {
+                'empty': '',
+                'small1': 'the',
+                'small2': 'This is a small example document .'
+            },
+            '__': {
+                'empty': '',
+                'small1': 'the',
+                'small2': 'This__is__a__small__example__document__.'
+            }
         },
-        '__': {
-            'empty': '',
-            'small1': 'the',
-            'small2': 'This__is__a__small__example__document__.'
+        'pos': {
+            ' ': {'empty': '', 'small1': 'PRON', 'small2': 'PRON AUX DET ADJ NOUN NOUN PUNCT'},
+            '__': {
+                'empty': '',
+                'small1': 'PRON',
+                'small2': 'PRON__AUX__DET__ADJ__NOUN__NOUN__PUNCT'
+            }
         }
     }
+    args = dict(select=select, by_attr=by_attr, collapse=collapse, as_table=as_table)
 
     for corp in corpora_en_serial_and_parallel_module:
         if select == 'nonexistent' or (select not in (None, []) and len(corp) == 0):
             with pytest.raises(KeyError):
-                c.doc_texts(corp, select=select, collapse=collapse, as_table=as_table)
+                c.doc_texts(corp, **args)
         else:
-            res = c.doc_texts(corp, select=select, collapse=collapse, as_table=as_table)
+            res = c.doc_texts(corp, **args)
 
             if as_table is False:
                 assert isinstance(res, dict)
@@ -777,11 +789,10 @@ def test_doc_texts(corpora_en_serial_and_parallel_module, collapse, select, as_t
 
                 for lbl, txt in res.items():
                     assert isinstance(txt, str)
-                    if collapse is None:
+                    if collapse is None and by_attr is None:
                         assert txt == textdata_en[lbl]
-                    else:
-                        if lbl in expected[collapse]:
-                            assert txt == expected[collapse][lbl]
+                    elif collapse is not None and by_attr in expected and lbl in expected[by_attr][collapse]:
+                        assert txt == expected[by_attr][collapse][lbl]
             else:
                 assert isinstance(res, pd.DataFrame)
                 if select is None:
@@ -790,44 +801,46 @@ def test_doc_texts(corpora_en_serial_and_parallel_module, collapse, select, as_t
                     assert set(res['doc']) == ({select} if isinstance(select, str) else set(select))
 
 
-
 @settings(deadline=None)
 @given(proportions=st.sampled_from([0, 1, 2]),
        select=st.sampled_from([None, 'empty', 'small2', 'nonexistent', ['small1', 'small2'], []]),
+       by_attr=st.sampled_from([None, 'pos', 'lemma']),
        as_table=st.sampled_from([False, True, 'freq']))
-def test_doc_frequencies(corpora_en_serial_and_parallel_module, proportions, select, as_table):
+def test_doc_frequencies(corpora_en_serial_and_parallel_module, proportions, select, by_attr, as_table):
+    args = dict(select=select, by_attr=by_attr, proportions=proportions, as_table=as_table)
+
     for corp in corpora_en_serial_and_parallel_module:
         if select == 'nonexistent' or (select not in (None, []) and len(corp) == 0):
             with pytest.raises(KeyError):
-                c.doc_frequencies(corp, select=select, proportions=proportions, as_table=as_table)
+                c.doc_frequencies(corp, **args)
         else:
-            res = c.doc_frequencies(corp, select=select, proportions=proportions, as_table=as_table)
+            res = c.doc_frequencies(corp, **args)
 
             if as_table is False:
                 assert isinstance(res, dict)
-                assert set(res.keys()) == c.vocabulary(corp, select=select, sort=False)
+                assert set(res.keys()) == c.vocabulary(corp, select=select, by_attr=by_attr, sort=False)
 
                 if len(corp) > 0 and select not in ('empty', []):
                     if proportions == 1:
                         # proportions
                         assert all([0 < v <= 1 for v in res.values()])
-                        if select is None:
+                        if select is None and by_attr is None:
                             assert np.isclose(res['the'], 5/9)
                     elif proportions == 2:
                         # log proportions
                         assert all([v <= 0 for v in res.values()])
                         assert all([0 < 10**v <= 1 for v in res.values()])
-                        if select is None:
+                        if select is None and by_attr is None:
                             assert np.isclose(res['the'], math.log10(5/9))
                     else:
                         # counts
                         assert all([0 < v < len(corp) for v in res.values()])
                         assert any([v > 0 for v in res.values()])
-                        if select is None:
+                        if select is None and by_attr is None:
                             assert res['the'] == 5
             else:
                 assert isinstance(res, pd.DataFrame)
-                assert set(res['token']) == c.vocabulary(corp, select=select, sort=False)
+                assert set(res['token']) == c.vocabulary(corp, by_attr=by_attr, select=select, sort=False)
 
 
 @pytest.mark.skipif('en_core_web_md' not in spacy.util.get_installed_models(),
@@ -935,14 +948,15 @@ def test_spacydocs(corpora_en_serial_and_parallel_also_w_vectors_module, select,
 
 @settings(deadline=None)
 @given(select=st.sampled_from([None, 'empty', 'small2', 'nonexistent', ['small1', 'small2'], []]),
+       by_attr=st.sampled_from([None, 'pos', 'lemma']),
        tokens_as_hashes=st.booleans(),
        force_unigrams=st.booleans(),
        sort=st.booleans(),
        convert_uint64hashes=st.booleans())
-def test_vocabulary_hypothesis(corpora_en_serial_and_parallel_module, select, tokens_as_hashes, force_unigrams, sort,
-                               convert_uint64hashes):
-    kwargs = dict(select=select, tokens_as_hashes=tokens_as_hashes, force_unigrams=force_unigrams, sort=sort,
-                  convert_uint64hashes=convert_uint64hashes)
+def test_vocabulary_hypothesis(corpora_en_serial_and_parallel_module, select, by_attr, tokens_as_hashes, force_unigrams,
+                               sort, convert_uint64hashes):
+    kwargs = dict(select=select, by_attr=by_attr, tokens_as_hashes=tokens_as_hashes, force_unigrams=force_unigrams,
+                  sort=sort, convert_uint64hashes=convert_uint64hashes)
 
     for corp in corpora_en_serial_and_parallel_module:
         if select == 'nonexistent' or (select not in (None, []) and len(corp) == 0):
@@ -963,11 +977,12 @@ def test_vocabulary_hypothesis(corpora_en_serial_and_parallel_module, select, to
                 else:
                     assert len(res) > 0
 
-                if select == 'small2' and not tokens_as_hashes:
+                if select == 'small2' and not tokens_as_hashes and not by_attr:
                     assert set(res) == {'This', 'is', 'a', 'small', 'example', 'document', '.'}
 
                 if select != 'empty':
-                    corp_flat = c.corpus_tokens_flattened(corp, select=select, tokens_as_hashes=tokens_as_hashes)
+                    corp_flat = c.corpus_tokens_flattened(corp, select=select, by_attr=by_attr,
+                                                          tokens_as_hashes=tokens_as_hashes)
                     assert all(t in corp_flat for t in res)
 
                 if not convert_uint64hashes and tokens_as_hashes and select is None:
@@ -983,14 +998,15 @@ def test_vocabulary_hypothesis(corpora_en_serial_and_parallel_module, select, to
 
 @settings(deadline=None)
 @given(select=st.sampled_from([None, 'empty', 'small2', 'nonexistent', ['small1', 'small2'], []]),
+       by_attr=st.sampled_from([None, 'pos', 'lemma']),
        proportions=st.sampled_from([0, 1, 2]),
        tokens_as_hashes=st.booleans(),
        force_unigrams=st.booleans(),
        convert_uint64hashes=st.booleans(),
        as_table=st.sampled_from([False, True, 'freq']))
-def test_vocabulary_counts(corpora_en_serial_and_parallel_module, select, proportions, tokens_as_hashes, force_unigrams,
-                           convert_uint64hashes, as_table):
-    kwargs = dict(select=select, proportions=proportions, tokens_as_hashes=tokens_as_hashes,
+def test_vocabulary_counts(corpora_en_serial_and_parallel_module, select, by_attr, proportions, tokens_as_hashes,
+                           force_unigrams, convert_uint64hashes, as_table):
+    kwargs = dict(select=select, by_attr=by_attr, proportions=proportions, tokens_as_hashes=tokens_as_hashes,
                   force_unigrams=force_unigrams, convert_uint64hashes=convert_uint64hashes, as_table=as_table)
 
     for corp in corpora_en_serial_and_parallel_module:
@@ -999,7 +1015,7 @@ def test_vocabulary_counts(corpora_en_serial_and_parallel_module, select, propor
                 c.vocabulary_counts(corp, **kwargs)
         else:
             res = c.vocabulary_counts(corp, **kwargs)
-            vocab = c.vocabulary(corp, select=select, tokens_as_hashes=tokens_as_hashes,
+            vocab = c.vocabulary(corp, select=select, by_attr=by_attr, tokens_as_hashes=tokens_as_hashes,
                                  force_unigrams=force_unigrams, sort=False)
 
             if as_table is False:
@@ -1022,7 +1038,8 @@ def test_vocabulary_counts(corpora_en_serial_and_parallel_module, select, propor
                         assert all([isinstance(t, expect_type) for t in res.keys()])
 
                     if select != 'empty':
-                        corp_flat = c.corpus_tokens_flattened(corp, select=select, tokens_as_hashes=tokens_as_hashes)
+                        corp_flat = c.corpus_tokens_flattened(corp, select=select, by_attr=by_attr,
+                                                              tokens_as_hashes=tokens_as_hashes)
                         assert all(t in corp_flat for t in res.keys())
 
                     if proportions == 0:
@@ -1118,9 +1135,11 @@ def test_tokens_table_hypothesis(corpora_en_serial_and_parallel_module, **args):
 @settings(deadline=None)
 @given(select=st.sampled_from([None, 'empty', 'small2', 'nonexistent', ['small1', 'small2'], []]),
        sentences=st.booleans(),
+       by_attr=st.sampled_from([None, 'pos', 'lemma']),
        tokens_as_hashes=st.booleans(),
        as_array=st.booleans())
-def test_corpus_tokens_flattened(corpora_en_serial_and_parallel_module, select, sentences, tokens_as_hashes, as_array):
+def test_corpus_tokens_flattened(corpora_en_serial_and_parallel_module, select, sentences, by_attr, tokens_as_hashes,
+                                 as_array):
     def _check_tokens(tok, vocab):
         if as_array:
             assert isinstance(tok, np.ndarray)
@@ -1133,7 +1152,8 @@ def test_corpus_tokens_flattened(corpora_en_serial_and_parallel_module, select, 
 
         assert set(tok) <= vocab
 
-    kwargs = dict(select=select, sentences=sentences, tokens_as_hashes=tokens_as_hashes, as_array=as_array)
+    kwargs = dict(select=select, sentences=sentences, by_attr=by_attr, tokens_as_hashes=tokens_as_hashes,
+                  as_array=as_array)
     for corp in corpora_en_serial_and_parallel_module:
         if select == 'nonexistent' or (select not in (None, []) and len(corp) == 0):
             with pytest.raises(KeyError):
@@ -1143,7 +1163,7 @@ def test_corpus_tokens_flattened(corpora_en_serial_and_parallel_module, select, 
                 c.corpus_tokens_flattened(corp, **kwargs)
         else:
             res = c.corpus_tokens_flattened(corp, **kwargs)
-            vocab = c.vocabulary(corp, tokens_as_hashes=tokens_as_hashes, sort=False)
+            vocab = c.vocabulary(corp, by_attr=by_attr, tokens_as_hashes=tokens_as_hashes, sort=False)
 
             if sentences:
                 assert isinstance(res, list)
@@ -1310,12 +1330,13 @@ def test_print_summary(capsys, corpora_en_serial_and_parallel_module):
 
 @settings(deadline=None)
 @given(select=st.sampled_from([None, 'empty', 'small2', 'nonexistent', ['small1', 'small2'], []]),
+       by_attr=st.sampled_from([None, 'pos', 'lemma']),
        as_table=st.booleans(),
        dtype=st.sampled_from([None, 'uint16', 'float64']),
        return_doc_labels=st.booleans(),
        return_vocab=st.booleans())
-def test_dtm(corpora_en_serial_and_parallel_module, select, as_table, dtype, return_doc_labels, return_vocab):
-    kwargs = dict(select=select, as_table=as_table, dtype=dtype,
+def test_dtm(corpora_en_serial_and_parallel_module, select, by_attr, as_table, dtype, return_doc_labels, return_vocab):
+    kwargs = dict(select=select, by_attr=by_attr, as_table=as_table, dtype=dtype,
                   return_doc_labels=return_doc_labels, return_vocab=return_vocab)
 
     for corp in corpora_en_serial_and_parallel_module:
@@ -1325,7 +1346,7 @@ def test_dtm(corpora_en_serial_and_parallel_module, select, as_table, dtype, ret
         else:
             res = c.dtm(corp, **kwargs)
 
-            expected_vocab = c.vocabulary(corp, select=select, sort=True)
+            expected_vocab = c.vocabulary(corp, select=select, by_attr=by_attr, sort=True)
             if select is None:
                 expected_labels = c.doc_labels(corp, sort=True)
             elif isinstance(select, str):
@@ -1365,7 +1386,7 @@ def test_dtm(corpora_en_serial_and_parallel_module, select, as_table, dtype, ret
                 assert dtm.index.tolist() == expected_labels
                 assert dtm.columns.tolist() == expected_vocab
 
-                if len(corp) > 0 and select is None:
+                if len(corp) > 0 and select is None and by_attr is None:
                     assert np.sum(dtm.iloc[expected_labels.index('empty'), :]) == 0
                     assert np.sum(dtm.iloc[:, expected_vocab.index('the')]) > 1
                     assert dtm.iloc[expected_labels.index('small1'), expected_vocab.index('the')] == 1
@@ -1373,7 +1394,7 @@ def test_dtm(corpora_en_serial_and_parallel_module, select, as_table, dtype, ret
                 assert isinstance(dtm, csr_matrix)
                 assert dtm.dtype == np.dtype(dtype or 'int32')
 
-                if len(corp) > 0 and select is None:
+                if len(corp) > 0 and select is None and by_attr is None:
                     assert np.sum(dtm[expected_labels.index('empty'), :]) == 0
                     assert np.sum(dtm[:, expected_vocab.index('the')]) > 1
                     assert dtm[expected_labels.index('small1'), expected_vocab.index('the')] == 1
@@ -1386,12 +1407,13 @@ def test_dtm(corpora_en_serial_and_parallel_module, select, as_table, dtype, ret
 
 @settings(deadline=None)
 @given(n=st.integers(-1, 5),
+       by_attr=st.sampled_from([None, 'pos', 'lemma']),
        join=st.booleans(),
        join_str=st.text(string.printable, max_size=1))
-def test_ngrams_hypothesis(corpora_en_serial_and_parallel_module, n, join, join_str):
+def test_ngrams_hypothesis(corpora_en_serial_and_parallel_module, n, by_attr, join, join_str):
     # note: proper ngram tests are done in test_tokenseq.py for token_ngrams
     for corp in corpora_en_serial_and_parallel_module:
-        args = dict(n=n, join=join, join_str=join_str)
+        args = dict(n=n, by_attr=by_attr, join=join, join_str=join_str)
 
         if n < 2:
             with pytest.raises(ValueError):
@@ -1401,7 +1423,7 @@ def test_ngrams_hypothesis(corpora_en_serial_and_parallel_module, n, join, join_
             assert isinstance(res, dict)
             assert set(corp.keys()) == set(res.keys())
 
-            corp_tokens = c.doc_tokens(corp)
+            corp_tokens = c.doc_tokens(corp, by_attr=by_attr)
 
             for lbl, ng in res.items():
                 dtok = corp_tokens[lbl]

@@ -204,7 +204,7 @@ def tabular_result_option(key: str, value: str) -> Callable:
     def deco_fn(fn):
         @wraps(fn)
         def inner_fn(*args, **kwargs):
-            if not isinstance(args[0], Corpus):
+            if not args or not isinstance(args[0], Corpus):
                 raise ValueError('first argument must be a Corpus object')
 
             if 'as_table' in kwargs:
@@ -573,8 +573,11 @@ def doc_labels_sample(docs: Corpus, n: int) -> Set[str]:
 
 
 @tabular_result_option('doc', 'text')
-def doc_texts(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None, collapse: Optional[str] = None,
-              n_tokens: Optional[int] = None, as_table: Union[bool, str] = False) \
+def doc_texts(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None,
+              by_attr: Optional[str] = None,
+              collapse: Optional[str] = None,
+              n_tokens: Optional[int] = None,
+              as_table: Union[bool, str] = False) \
         -> Union[Dict[str, str], pd.DataFrame]:
     """
     Return reconstructed document text from documents in `docs`. By default, uses whitespace token attribute to collapse
@@ -582,6 +585,8 @@ def doc_texts(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None
 
     :param docs: a Corpus object
     :param select: if not None, this can be a single string or a sequence of strings specifying the documents to fetch
+    :param by_attr: if not None, this should be an attribute name; this attribute data will then be
+                    used instead of the tokens in `docs`
     :param collapse: if None, use whitespace token attribute for collapsing tokens, otherwise use custom string
     :param n_tokens: max. number of tokens to retrieve from each document; if None (default), retrieve all tokens
     :param as_table: if True, return result as dataframe; if a string, sort dataframe by this column; if string prefixed
@@ -593,18 +598,19 @@ def doc_texts(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None
         texts = {}
         for lbl, tok in tokens.items():
             if collapse is None:
-                texts[lbl] = collapse_tokens(tok['token'], tok['whitespace'])
+                texts[lbl] = collapse_tokens(tok[by_attr or 'token'], tok['whitespace'])
             else:
                 texts[lbl] = collapse_tokens(tok, collapse)
 
         return texts
 
     select = _single_str_to_set(select)   # force doc_tokens output as dict
+    args = dict(select=select, by_attr=by_attr, n_tokens=n_tokens)
 
     if collapse is None:
-        tokdata = doc_tokens(docs, select=select, n_tokens=n_tokens, with_attr='whitespace')
+        tokdata = doc_tokens(docs, **args, with_attr='whitespace')
     else:
-        tokdata = doc_tokens(docs, select=select, n_tokens=n_tokens)
+        tokdata = doc_tokens(docs, **args)
 
     return _doc_texts(_paralleltask(docs, tokdata,
                                     force_serialproc=(n_tokens is not None and n_tokens < 1000) or len(docs) < 1000),
@@ -613,6 +619,7 @@ def doc_texts(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None
 
 @tabular_result_option('token', 'freq')
 def doc_frequencies(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None,
+                    by_attr: Optional[str] = None,
                     tokens_as_hashes: bool = False, force_unigrams: bool = False,
                     proportions: Proportion = Proportion.NO,
                     as_table: Union[bool, str] = False) \
@@ -637,6 +644,8 @@ def doc_frequencies(docs: Corpus, select: Optional[Union[str, Collection[str]]] 
 
     :param docs: a :class:`Corpus` object
     :param select: if not None, this can be a single string or a sequence of strings specifying a subset of `docs`
+    :param by_attr: if not None, this should be an attribute name; this attribute data will then be
+                    used instead of the tokens in `docs`
     :param tokens_as_hashes: if True, return token type hashes (integers) instead of textual representations (strings)
     :param force_unigrams: ignore n-grams setting if `docs` is a Corpus with ngrams and always return unigrams
     :param proportions: one of :attr:`~tmtoolkit.types.Proportion`: ``NO (0)`` – return counts; ``YES (1)`` – return
@@ -651,7 +660,8 @@ def doc_frequencies(docs: Corpus, select: Optional[Union[str, Collection[str]]] 
         raise ValueError('supplied `docs` Corpus object uses n-grams; `tokens_as_hashes` must be False in that case')
 
     select = _single_str_to_set(select)  # force doc_tokens output as dict
-    tokens = doc_tokens(docs, select=select, tokens_as_hashes=result_uses_hashes, force_unigrams=force_unigrams)
+    tokens = doc_tokens(docs, select=select, by_attr=by_attr, tokens_as_hashes=result_uses_hashes,
+                        force_unigrams=force_unigrams)
 
     if not tokens:   # empty corpus -> no doc. frequencies (prevent log(0) domain error)
         return {}
@@ -669,7 +679,7 @@ def doc_frequencies(docs: Corpus, select: Optional[Union[str, Collection[str]]] 
     if tokens_as_hashes or not result_uses_hashes:
         return dict(zip(hashes, counts))
     else:
-        return {docs.bimaps['token'][h]: n for h, n in zip(hashes, counts)}
+        return {docs.bimaps[by_attr or 'token'][h]: n for h, n in zip(hashes, counts)}
 
 
 def doc_vectors(docs: Union[Corpus, Dict[str, Doc]], select: Optional[Union[str, Collection[str]]] = None,
@@ -804,6 +814,7 @@ def vocabulary(docs: Corpus, select: Optional[Union[str, Collection[str]]] = Non
 
 @tabular_result_option(key='token', value='freq')
 def vocabulary_counts(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None,
+                      by_attr: Optional[str] = None,
                       proportions: Proportion = Proportion.NO,
                       tokens_as_hashes: bool = False, force_unigrams: bool = False,
                       convert_uint64hashes: bool = True, as_table: Union[bool, str] = False) \
@@ -814,6 +825,8 @@ def vocabulary_counts(docs: Corpus, select: Optional[Union[str, Collection[str]]
 
     :param docs: a :class:`Corpus` object
     :param select: if not None, this can be a single string or a sequence of strings specifying a subset of `docs`
+    :param by_attr: if not None, this should be an attribute name; this attribute data will then be
+                    used instead of the tokens in `docs`
     :param proportions: one of :attr:`~tmtoolkit.types.Proportion`: ``NO (0)`` – return counts; ``YES (1)`` – return
                         proportions; ``LOG (2)`` – return log10 of proportions
     :param tokens_as_hashes: if True, return token type hashes (integers) instead of textual representations (strings)
@@ -831,7 +844,8 @@ def vocabulary_counts(docs: Corpus, select: Optional[Union[str, Collection[str]]
 
     if isinstance(select, str):   # force doc_tokens output as dict
         select = [select]
-    tok = doc_tokens(docs, select=select, tokens_as_hashes=result_uses_hashes, force_unigrams=force_unigrams)
+    tok = doc_tokens(docs, select=select, by_attr=by_attr, tokens_as_hashes=result_uses_hashes,
+                     force_unigrams=force_unigrams)
 
     if not tok:  # shortcut
         return {}
@@ -850,7 +864,7 @@ def vocabulary_counts(docs: Corpus, select: Optional[Union[str, Collection[str]]
             hashes = hashes.tolist()
         return dict(zip(hashes, counts))
     else:
-        return {docs.bimaps['token'][h]: n for h, n in zip(hashes, counts)}
+        return {docs.bimaps[by_attr or 'token'][h]: n for h, n in zip(hashes, counts)}
 
 
 def vocabulary_size(docs: Union[Corpus, Dict[str, List[str]]], select: Optional[Union[str, Collection[str]]] = None,
@@ -987,7 +1001,7 @@ def tokens_table(docs: Corpus,
 
 
 def corpus_tokens_flattened(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None,
-                            sentences: bool = False, tokens_as_hashes: bool = False,
+                            sentences: bool = False, by_attr: Optional[str] = None, tokens_as_hashes: bool = False,
                             as_array: bool = False, force_unigrams: bool = False) -> Union[list, np.ndarray]:
     """
     Return tokens (or token hashes) from `docs` as flattened list, simply concatenating  all documents.
@@ -995,6 +1009,8 @@ def corpus_tokens_flattened(docs: Corpus, select: Optional[Union[str, Collection
     :param docs: a Corpus object
     :param select: if not None, this can be a single string or a sequence of strings specifying a subset of `docs`
     :param sentences: divide results into sentences; if True, the result will consist of a list of sentences
+    :param by_attr: if not None, this should be an attribute name; this attribute data will then be
+                    used instead of the tokens in `docs`
     :param tokens_as_hashes: passed to :func:`doc_tokens`; if True, return token hashes instead of string tokens
     :param as_array: if True, return NumPy array instead of list
     :param force_unigrams: ignore n-grams setting if `docs` is a Corpus with ngrams and always return unigrams
@@ -1005,7 +1021,7 @@ def corpus_tokens_flattened(docs: Corpus, select: Optional[Union[str, Collection
     if isinstance(select, str):  # force doc_tokens output as dict
         select = [select]
 
-    tok = doc_tokens(docs, select=select, sentences=sentences, only_non_empty=True,
+    tok = doc_tokens(docs, select=select, sentences=sentences, only_non_empty=True, by_attr=by_attr,
                      tokens_as_hashes=tokens_as_hashes, as_arrays=as_array, force_unigrams=force_unigrams)
 
     dtype = 'uint64' if tokens_as_hashes else 'str'
@@ -1218,7 +1234,8 @@ def print_summary(docs: Corpus,
                          max_tokens_string_length=max_tokens_string_length))
 
 
-def dtm(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None, as_table: bool = False,
+def dtm(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None,
+        by_attr: Optional[str] = None, as_table: bool = False,
         tokens_as_hashes: bool = False, dtype: Optional[Union[str, np.dtype]] = None,
         return_doc_labels: bool = False, return_vocab: bool = False) \
         -> Union[sparse.csr_matrix,
@@ -1237,6 +1254,8 @@ def dtm(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None, as_t
 
     :param docs: a Corpus object
     :param select: if not None, this can be a single string or a sequence of strings specifying a subset of `docs`
+    :param by_attr: if not None, this should be an attribute name; this attribute data will then be
+                    used instead of the tokens in `docs`
     :param as_table: return result as dense pandas DataFrame
     :param tokens_as_hashes: if True, return token type hashes (integers) instead of textual representations (strings)
                              in the vocabulary
@@ -1259,7 +1278,7 @@ def dtm(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None, as_t
 
     select = _single_str_to_set(select)
     logger.debug('getting tokens')
-    tokens = doc_tokens(docs, tokens_as_hashes=tokens_as_hashes, select=select)
+    tokens = doc_tokens(docs, by_attr=by_attr, tokens_as_hashes=tokens_as_hashes, select=select)
 
     if logger.isEnabledFor(logging.INFO):
         logger.info(f'generating sparse DTM with {len(tokens)} documents and '
@@ -1299,6 +1318,7 @@ def dtm(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None, as_t
 def ngrams(docs: Corpus, n: int,
            select: Optional[Union[str, Collection[str]]] = None,
            sentences: bool = False,
+           by_attr: Optional[str] = None,
            tokens_as_hashes: bool = False,
            join: bool = True,
            join_str: str = ' ') -> Dict[str, Union[List[str], str]]:
@@ -1310,12 +1330,15 @@ def ngrams(docs: Corpus, n: int,
     :param select: if not None, this can be a single string or a sequence of strings specifying a subset of `docs`
     :param sentences: divide results into sentences; if True, each document will consist of a list of sentences which in
                       turn contain a list or array of tokens
+    :param by_attr: if not None, this should be an attribute name; this attribute data will then be
+                    used instead of the tokens in `docs`
     :param tokens_as_hashes: if True, return token type hashes (integers) instead of textual representations (strings)
     :param join: if True, join generated n-grams by string `join_str`
     :param join_str: string used for joining
     :return: dict mapping document label to document n-grams; if `join` is True, the list contains strings of
              joined n-grams, otherwise the list contains lists of size `n` in turn containing the strings that
-             make up the n-gram
+             make up the n-gram; if `sentences` is True, each result document consists of a list of sentences with
+             n-grams
     """
     if n < 2:
         raise ValueError('`n` must be at least 2')
@@ -1333,7 +1356,7 @@ def ngrams(docs: Corpus, n: int,
 
     select = _single_str_to_set(select)
     logger.debug('getting tokens')
-    tokens = doc_tokens(docs, select=select, sentences=sentences, tokens_as_hashes=tokens_as_hashes)
+    tokens = doc_tokens(docs, select=select, sentences=sentences, by_attr=by_attr, tokens_as_hashes=tokens_as_hashes)
     logger.debug(f'generating {n}-grams')
     return _ngrams(_paralleltask(docs, tokens=tokens))
 
