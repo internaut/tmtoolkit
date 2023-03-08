@@ -1405,12 +1405,13 @@ def test_dtm(corpora_en_serial_and_parallel_module, select, by_attr, as_table, d
 
 @settings(deadline=None)
 @given(n=st.integers(-1, 5),
+       by_attr=st.sampled_from([None, 'pos', 'lemma']),
        join=st.booleans(),
        join_str=st.text(string.printable, max_size=1))
-def test_ngrams_hypothesis(corpora_en_serial_and_parallel_module, n, join, join_str):
+def test_ngrams_hypothesis(corpora_en_serial_and_parallel_module, n, by_attr, join, join_str):
     # note: proper ngram tests are done in test_tokenseq.py for token_ngrams
     for corp in corpora_en_serial_and_parallel_module:
-        args = dict(n=n, join=join, join_str=join_str)
+        args = dict(n=n, by_attr=by_attr, join=join, join_str=join_str)
 
         if n < 2:
             with pytest.raises(ValueError):
@@ -1420,7 +1421,7 @@ def test_ngrams_hypothesis(corpora_en_serial_and_parallel_module, n, join, join_
             assert isinstance(res, dict)
             assert set(corp.keys()) == set(res.keys())
 
-            corp_tokens = c.doc_tokens(corp)
+            corp_tokens = c.doc_tokens(corp, by_attr=by_attr)
 
             for lbl, ng in res.items():
                 dtok = corp_tokens[lbl]

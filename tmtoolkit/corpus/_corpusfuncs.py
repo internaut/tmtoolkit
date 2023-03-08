@@ -1314,6 +1314,7 @@ def dtm(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None,
 def ngrams(docs: Corpus, n: int,
            select: Optional[Union[str, Collection[str]]] = None,
            sentences: bool = False,
+           by_attr: Optional[str] = None,
            tokens_as_hashes: bool = False,
            join: bool = True,
            join_str: str = ' ') -> Dict[str, Union[List[str], str]]:
@@ -1325,12 +1326,15 @@ def ngrams(docs: Corpus, n: int,
     :param select: if not None, this can be a single string or a sequence of strings specifying a subset of `docs`
     :param sentences: divide results into sentences; if True, each document will consist of a list of sentences which in
                       turn contain a list or array of tokens
+    :param by_attr: if not None, this should be an attribute name; this attribute data will then be
+                    used instead of the tokens in `docs`
     :param tokens_as_hashes: if True, return token type hashes (integers) instead of textual representations (strings)
     :param join: if True, join generated n-grams by string `join_str`
     :param join_str: string used for joining
     :return: dict mapping document label to document n-grams; if `join` is True, the list contains strings of
              joined n-grams, otherwise the list contains lists of size `n` in turn containing the strings that
-             make up the n-gram
+             make up the n-gram; if `sentences` is True, each result document consists of a list of sentences with
+             n-grams
     """
     if n < 2:
         raise ValueError('`n` must be at least 2')
@@ -1348,7 +1352,7 @@ def ngrams(docs: Corpus, n: int,
 
     select = _single_str_to_set(select)
     logger.debug('getting tokens')
-    tokens = doc_tokens(docs, select=select, sentences=sentences, tokens_as_hashes=tokens_as_hashes)
+    tokens = doc_tokens(docs, select=select, sentences=sentences, by_attr=by_attr, tokens_as_hashes=tokens_as_hashes)
     logger.debug(f'generating {n}-grams')
     return _ngrams(_paralleltask(docs, tokens=tokens))
 
