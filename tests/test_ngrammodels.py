@@ -7,7 +7,7 @@ from hypothesis import given, strategies as st
 
 from tmtoolkit.corpus import Corpus, vocabulary
 from tmtoolkit.ngrammodels import NGramModel
-from tmtoolkit.tokenseq import OOV, SENT_START, SENT_END, SPECIAL_TOKENS
+from tmtoolkit.strings import OOV, SENT_START, SENT_END, SPECIAL_TOKENS
 from ._testtextdata import textdata_sm
 
 

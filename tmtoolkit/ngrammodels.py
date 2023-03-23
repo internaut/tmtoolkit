@@ -9,7 +9,8 @@ from collections import Counter
 from typing import Optional, Union, List, Tuple, Generator, Dict, Iterable
 
 from tmtoolkit.corpus import doc_tokens, Corpus
-from tmtoolkit.tokenseq import OOV, SENT_START, SENT_END, SPECIAL_TOKENS, token_ngrams, token_hash_convert, pad_sequence
+from tmtoolkit.strings import OOV, SENT_START, SENT_END, SPECIAL_TOKENS
+from tmtoolkit.tokenseq import pad_sequence, token_hash_convert, token_ngrams
 from tmtoolkit.types import StrOrInt
 from tmtoolkit.utils import flatten_list
 

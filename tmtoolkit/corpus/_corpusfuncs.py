@@ -34,10 +34,10 @@ from ..bow.dtm import create_sparse_dtm, dtm_to_dataframe
 from ..utils import merge_dicts, empty_chararray, as_chararray, \
     flatten_list, combine_sparse_matrices_columnwise, pickle_data, unpickle_file, merge_sets, \
     path_split, read_text_file, linebreaks_win2unix, sample_dict, dict2df, check_context_size, indices_of_matches
-from ..tokenseq import token_lengths, token_ngrams, token_match_multi_pattern, index_windows_around_matches, \
-    token_match_subsequent, token_join_subsequent, npmi, token_collocations, numbertoken_to_magnitude, token_match, \
-    collapse_tokens, simplify_unicode_chars, unique_chars, DOC_START, DOC_END, SPECIAL_TOKENS, pad_sequence, \
-    token_hash_convert, OOV
+from ..strings import numbertoken_to_magnitude, simplify_unicode_chars, DOC_START, DOC_END, SPECIAL_TOKENS, OOV
+from ..tokenseq import pad_sequence, unique_chars, token_lengths, collapse_tokens, token_hash_convert, npmi, \
+    token_collocations, token_match, token_match_multi_pattern, token_match_subsequent, token_join_subsequent, \
+    token_ngrams, index_windows_around_matches
 from ..types import Proportion, StrOrInt
 
 from ._common import DATAPATH, LANGUAGE_LABELS, TOKENMAT_ATTRS, simplified_pos

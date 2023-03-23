@@ -6,7 +6,6 @@ Tests for tmtoolkit.tokenseq module.
 
 import string
 from collections import Counter
-from importlib.util import find_spec
 
 import numpy as np
 import pytest
@@ -14,9 +13,10 @@ import random
 from hypothesis import given, strategies as st
 from hypothesis.extra.numpy import arrays, array_shapes
 
-from ._testtools import strategy_tokens, strategy_2d_array, strategy_lists_of_tokens
-from tmtoolkit.utils import as_chararray, flatten_list
 from tmtoolkit import tokenseq
+from tmtoolkit.utils import as_chararray, flatten_list
+
+from ._testtools import strategy_tokens, strategy_2d_array, strategy_lists_of_tokens
 
 
 @given(s=strategy_tokens(string.printable),
@@ -186,7 +186,7 @@ def test_token_hash_convert(tokens, tokens_as_hashes, tokens_as_array, special_t
 
     collapse = ' ' if collapse and tokens_as_hashes else None
     res = tokenseq.token_hash_convert(tokens, stringstore=stringstore, special_tokens=special_tokens_dict,
-                                      collapse=collapse, arr_dtype_for_hashes='int64')
+                                                collapse=collapse, arr_dtype_for_hashes='int64')
 
     if collapse == ' ':
         assert isinstance(res, str)
@@ -216,48 +216,6 @@ def test_token_hash_convert(tokens, tokens_as_hashes, tokens_as_array, special_t
                 assert np.issubdtype(res.dtype, 'str')
             else:
                 assert all(isinstance(t, str) for t in res)
-
-
-
-@given(token=st.one_of(st.text(string.printable),
-                       st.sampled_from(['\u00C7', '\u0043\u0327', '\u0043\u0332', 'é', 'ῷ'])),
-       method=st.sampled_from(['icu', 'ascii', 'nonexistent']),
-       ascii_encoding_errors=st.sampled_from(['ignore', 'replace']))
-def test_simplify_unicode_chars(token, method, ascii_encoding_errors):
-    if method == 'icu' and not find_spec('icu'):
-        with pytest.raises(RuntimeError, match='^package PyICU'):
-            tokenseq.simplify_unicode_chars(token, method=method)
-    elif method == 'nonexistent':
-        with pytest.raises(ValueError, match='`method` must be either "icu" or "ascii"'):
-            tokenseq.simplify_unicode_chars(token, method=method)
-    else:
-        res = tokenseq.simplify_unicode_chars(token, method=method)
-        assert isinstance(res, str)
-        if method == 'icu' or (method == 'ascii' and ascii_encoding_errors == 'ignore'):
-            assert len(res) <= len(token)
-
-        if token in {'\u00C7', '\u0043\u0327', '\u0043\u0332'}:
-            assert res == 'C'
-        elif token == 'é':
-            assert res == 'e'
-        elif token == 'ῷ':
-            if method == 'icu':
-                assert res == 'ω'
-            else:  # method == 'ascii'
-                assert res == '' if ascii_encoding_errors == 'ignore' else '???'
-
-
-@pytest.mark.parametrize('value, expected', [
-    ('', ''),
-    ('no tags', 'no tags'),
-    ('<b>', ''),
-    ('<b>x</b>', 'x'),
-    ('<b>x &amp; y</b>', 'x & y'),
-    ('<b>x &amp; <i>y</i> = &#9733;</b>', 'x & y = ★'),
-    ('<b>x &amp; <i>y = &#9733;</b>', 'x & y = ★'),
-])
-def test_strip_tags(value, expected):
-    assert tokenseq.strip_tags(value) == expected
 
 
 @given(xy=strategy_2d_array(int, 0, 100, min_side=2, max_side=100),
@@ -296,6 +254,41 @@ def test_pmi_hypothesis(xy, as_prob, n_total_factor, k, normalize):
                 assert np.all(res == tokenseq.pmi2(x, y, xy, n_total=n_total))
             elif k == 3:
                 assert np.all(res == tokenseq.pmi3(x, y, xy, n_total=n_total))
+
+
+@given(xy=strategy_2d_array(int, 0, 100, min_side=2, max_side=100),
+       as_prob=st.booleans(),
+       n_total_factor=st.floats(min_value=1, max_value=10, allow_nan=False),
+       k=st.integers(min_value=0, max_value=5),
+       normalize=st.booleans())
+def test_ppmi_hypothesis(xy, as_prob, n_total_factor, k, normalize):
+    size = len(xy)
+    xy = xy[:, 0:2]
+    x = xy[:, 0]
+    y = xy[:, 1]
+    xy = np.min(xy, axis=1) * np.random.uniform(0, 1, size)
+    n_total = 1 + n_total_factor * (np.sum(x) + np.sum(y))
+
+    if as_prob:
+        x = x / n_total
+        y = y / n_total
+        xy = xy / n_total
+        n_total = None
+
+    if k < 1 or (k > 1 and normalize):
+        with pytest.raises(ValueError):
+            tokenseq.ppmi(x, y, xy, n_total=n_total, k=k, normalize=normalize)
+    else:
+        res = tokenseq.ppmi(x, y, xy, n_total=n_total, k=k, normalize=normalize)
+        assert isinstance(res, np.ndarray)
+        assert len(res) == len(x)
+
+        if np.all(x > 0) and np.all(y > 0):
+            assert np.sum(np.isnan(res)) == 0
+            if normalize:
+                assert np.all(res >= 0) and np.all(res <= 1)
+            else:
+                assert np.all(res >= 0)
 
 
 @given(xy=arrays(int, array_shapes(min_dims=1, max_dims=1)))
@@ -470,8 +463,9 @@ def test_token_match(pattern, tokens, match_type, ignore_case, glob_method, expe
     (['A', 'A'], ['a', 'b', 'c'], 'exact', True, 'match', [True, False, False])
 ])
 def test_token_match_multi_pattern(pattern, tokens, match_type, ignore_case, glob_method, expected):
-    assert np.array_equal(tokenseq.token_match_multi_pattern(pattern, tokens, match_type, ignore_case, glob_method),
-                          np.array(expected))
+    assert np.array_equal(
+        tokenseq.token_match_multi_pattern(pattern, tokens, match_type, ignore_case, glob_method),
+        np.array(expected))
 
 
 def test_token_match_subsequent():
@@ -629,33 +623,3 @@ def test_token_ngrams_hypothesis(tokens, n, join, join_str, ngram_container, pas
                             tokens_.extend(g[n-1:])
 
                     assert tokens_ == tokens
-
-
-@pytest.mark.parametrize('numbertoken, char, firstchar, below_one, drop_sign, expected', [
-    ('', '0', '0', '0', True, ''),
-    ('no number', '0', '0', '0', True, ''),
-    ('0', '0', '0', '0', True, '0'),
-    ('0.9', '0', '0', '0', True, '0'),
-    ('0.1', '0', '0', '', True, ''),
-    ('0.01', '0', '0', '0', True, '0'),
-    ('-0.01', '0', '0', 'X', True, 'X'),
-    ('1', '0', '0', '0', True, '0'),
-    ('1', '0', '1', '0', True, '1'),
-    ('10', '0', '0', '0', True, '00'),
-    ('10', '0', '1', '0', True, '10'),
-    ('123456', '0', '0', '0', True, '000000'),
-    ('123456', '0', '1', '0', True, '100000'),
-    ('123456', 'N', 'X', '0', True, 'XNNNNN'),
-    ('123.456', '0', '0', '0', True, '000'),
-    ('-123.456', '0', '0', '0', True, '000'),
-    ('-123.456', '0', '0', '0', False, '-000'),
-    ('-123.456', '0', '1', '0', False, '-100'),
-    ('-0.0123', '0', '1', '0', False, '-0'),
-    ('-1.0123', '0', '1', '0', False, '-1'),
-    ('180,000', '0', '1', '0', False, '100000'),
-    ('180,000.99', '0', '1', '0', False, '100000'),
-])
-def test_numbertoken_to_magnitude(numbertoken, char, firstchar, below_one, drop_sign, expected):
-    res = tokenseq.numbertoken_to_magnitude(numbertoken, char=char, firstchar=firstchar,
-                                            below_one=below_one, drop_sign=drop_sign)
-    assert res == expected

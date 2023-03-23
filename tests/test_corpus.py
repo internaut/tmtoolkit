@@ -1241,7 +1241,6 @@ def test_corpus_unique_chars(corpora_en_serial_and_parallel_module, select):
                     assert res == {'.', 'T', 'a', 'c', 'd', 'e', 'h', 'i', 'l', 'm', 'n', 'o', 'p', 's', 't', 'u', 'x'}
 
 
-
 @settings(deadline=None)
 @given(select=st.sampled_from([None, 'empty', 'small2', 'nonexistent', ['small1', 'small2'], []]),
        threshold=st.one_of(st.none(), st.floats(allow_nan=False, allow_infinity=False)),
@@ -2873,7 +2872,7 @@ def test_join_collocations_by_statistic_hypothesis(corpora_en_serial_and_paralle
                                                    return_joint_tokens):
     # restricting statistic to simple counts, otherwise the test takes too long
     args = dict(threshold=threshold, min_count=min_count, embed_tokens_min_docfreq=embed_tokens_min_docfreq,
-                glue=glue, statistic=tokenseq.simple_collocation_counts)
+                glue=glue, statistic=tmtoolkit.tokenseq.simple_collocation_counts)
 
     for corp in corpora_en_serial_and_parallel_module:
         if pass_embed_tokens > 0:

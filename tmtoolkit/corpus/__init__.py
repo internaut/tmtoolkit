@@ -16,7 +16,7 @@ for pkg in ('spacy', 'bidict', 'loky'):
                            f'tmtoolkit with "recommended" or "textproc" option? see '
                            f'https://tmtoolkit.readthedocs.io/en/latest/install.html for further information')
 
-from ..tokenseq import strip_tags, numbertoken_to_magnitude, simplify_unicode_chars
+from ..strings import strip_tags, numbertoken_to_magnitude, simplify_unicode_chars
 
 from ._common import DEFAULT_LANGUAGE_MODELS, LANGUAGE_LABELS, STD_TOKEN_ATTRS, simplified_pos
 from ._document import Document, document_token_attr, document_from_attrs
