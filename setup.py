@@ -17,23 +17,23 @@ __license__ = 'Apache License 2.0'
 
 GITHUB_URL = 'https://github.com/WZBSocialScienceCenter/tmtoolkit'
 
-DEPS_BASE = ['numpy>=1.22.0', 'scipy>=1.7.0', 'globre>=0.1.5',
-             'pandas>=1.4.0', 'xlrd>=2.0.0', 'openpyxl>=3.0.0',
-             'matplotlib>=3.5.0', 'bidict>=0.21.0']
+DEPS_BASE = ['numpy>=1.22.0,<2.0', 'scipy>=1.7.0,<2.0', 'globre>=0.1.5,<0.2',
+             'pandas>=1.4.0,<2.0', 'xlrd>=2.0.0', 'openpyxl>=3.0.0',
+             'matplotlib>=3.5.0,<4.0', 'bidict>=0.21.0,<1.0', 'wheel']
 
 DEPS_EXTRA = {
-    'textproc': ['spacy>=3.2.0', 'loky>=3.0.0'],
-    'textproc_extra': ['PyICU>=2.8', 'nltk>=3.6.0'],
-    'wordclouds': ['wordcloud>=1.8.0,<1.9', 'Pillow>=9.0.0'],
-    'lda': ['lda>=2.0'],
-    'sklearn': ['scikit-learn>=1.0.0'],
-    'gensim': ['gensim>=4.1.0'],
-    'topic_modeling_eval_extra': ['gmpy2>=2.1.0'],
-    'rinterop': ['rpy2>=3.5.0'],
-    'test': ['pytest>=7.0.0', 'hypothesis>=6.36.0'],
-    'doc': ['Sphinx>=4.4.0', 'sphinx-rtd-theme>=1.0.0', 'nbsphinx>=0.8.0'],
-    'dev': ['coverage>=6.3', 'coverage-badge>=1.1.0', 'pytest-cov>=3.0.0', 'twine>=3.8.0',
-            'ipython>=8.0.0', 'jupyter>=1.0.0', 'notebook>=6.4.0', 'tox>=3.24.0', 'setuptools>=60.7.0'],
+    'textproc': ['spacy>=3.2.0,<3.3', 'loky>=3.0.0,<4.0'],
+    'textproc_extra': ['PyICU>=2.8,<3.0', 'nltk>=3.6.0,<3.7'],
+    'wordclouds': ['wordcloud>=1.8.0,<1.9', 'Pillow>=9.0.0,<10.0.0'],
+    'lda': ['lda>=2.0,<3.0'],
+    'sklearn': ['scikit-learn>=1.0.0,<2.0'],
+    'gensim': ['gensim>=4.1.0,<4.2'],
+    'topic_modeling_eval_extra': ['gmpy2>=2.1.0,<3.0'],
+    'rinterop': ['rpy2>=3.5.0,<3.6'],
+    'test': ['pytest>=7.0.0,<8.0', 'hypothesis>=6.36.0,<7.0'],
+    'doc': ['Sphinx>=4.4.0,<5.0', 'sphinx-rtd-theme>=1.0.0', 'nbsphinx>=0.8.0,<1.0'],
+    'dev': ['coverage>=6.3,<7.0', 'coverage-badge>=1.1.0', 'pytest-cov>=3.0.0,<4.0', 'twine>=3.8.0',
+            'ipython>=8.0.0', 'jupyter>=1.0.0', 'notebook>=6.4.0', 'tox>=3.24.0,<4.0', 'setuptools>=60.7.0'],
 }
 
 # DEPS_EXTRA['minimal'] = DEPS_BASE   # doesn't work with extras_require and pip currently
