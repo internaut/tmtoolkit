@@ -223,7 +223,7 @@ def test_token_hash_convert(tokens, tokens_as_hashes, tokens_as_array, special_t
        n_total_factor=st.floats(min_value=1, max_value=10, allow_nan=False),
        k=st.integers(min_value=0, max_value=5),
        normalize=st.booleans())
-def test_pmi_hypothesis(xy, as_prob, n_total_factor, k, normalize):
+def test_pmi_vectors_hypothesis(xy, as_prob, n_total_factor, k, normalize):
     size = len(xy)
     xy = xy[:, 0:2]
     x = xy[:, 0]
@@ -241,6 +241,9 @@ def test_pmi_hypothesis(xy, as_prob, n_total_factor, k, normalize):
         with pytest.raises(ValueError):
             tokenseq.pmi(x, y, xy, n_total=n_total, k=k, normalize=normalize)
     else:
+        with pytest.raises(ValueError):
+            tokenseq.pmi(x, y, xy, n_total=n_total, k=k, alpha=0.75, normalize=normalize)
+
         res = tokenseq.pmi(x, y, xy, n_total=n_total, k=k, normalize=normalize)
         assert isinstance(res, np.ndarray)
         assert len(res) == len(x)
@@ -258,10 +261,67 @@ def test_pmi_hypothesis(xy, as_prob, n_total_factor, k, normalize):
 
 @given(xy=strategy_2d_array(int, 0, 100, min_side=2, max_side=100),
        as_prob=st.booleans(),
-       n_total_factor=st.floats(min_value=1, max_value=10, allow_nan=False),
        k=st.integers(min_value=0, max_value=5),
+       alpha=st.one_of(st.just(1.0), st.floats(min_value=0.1, max_value=2.0)),
        normalize=st.booleans())
-def test_ppmi_hypothesis(xy, as_prob, n_total_factor, k, normalize):
+def test_pmi_matrix_hypothesis(xy, as_prob, k, alpha, normalize):
+    if as_prob:
+        if np.sum(xy) > 0:
+            xy = xy / np.sum(xy)
+        else:
+            xy = xy.astype('float')
+
+    kwargs = dict(k=k, normalize=normalize)
+
+    if k < 1 or (k > 1 and normalize):
+        with pytest.raises(ValueError):
+            tokenseq.pmi(xy, **kwargs)
+    else:
+        with pytest.raises(ValueError):
+            tokenseq.pmi(xy[np.newaxis], **kwargs)
+        with pytest.raises(ValueError):
+            tokenseq.pmi(xy, xy[0], **kwargs)
+        with pytest.raises(ValueError):
+            tokenseq.pmi(xy, xy[0], xy[1], **kwargs)
+
+        if as_prob:
+            with pytest.raises(ValueError):
+                tokenseq.pmi(xy - 10.0, **kwargs)
+            with pytest.raises(ValueError):
+                tokenseq.pmi(xy + 10.0, **kwargs)
+            if alpha != 1.0:
+                with pytest.raises(ValueError):
+                    tokenseq.pmi(xy, **kwargs, alpha=alpha)
+        else:
+            with pytest.raises(ValueError):
+                tokenseq.pmi(xy - 101, **kwargs)
+
+        if as_prob and not np.isclose(np.sum(xy), 1.0):
+            with pytest.raises(ValueError):
+                tokenseq.pmi(xy, **kwargs)
+        elif not as_prob and np.sum(xy) == 0:
+            with pytest.raises(ValueError):
+                tokenseq.pmi(xy, **kwargs)
+        else:
+            res = tokenseq.pmi(xy, **kwargs, alpha=1.0 if as_prob else alpha)
+            assert isinstance(res, np.ndarray)
+            assert res.shape == xy.shape
+
+            if alpha == 1.0:
+                if normalize:
+                    assert np.array_equal(res, tokenseq.npmi(xy), equal_nan=True)
+                    if np.sum(np.isnan(res)) == 0:
+                        assert np.all(res >= -1) and np.all(res <= 1)
+                elif k == 2:
+                    assert np.array_equal(res, tokenseq.pmi2(xy), equal_nan=True)
+                elif k == 3:
+                    assert np.array_equal(res, tokenseq.pmi3(xy), equal_nan=True)
+
+
+@given(xy=strategy_2d_array(int, 0, 100, min_side=2, max_side=100),
+       as_prob=st.booleans(),
+       n_total_factor=st.floats(min_value=1, max_value=10, allow_nan=False))
+def test_ppmi_hypothesis(xy, as_prob, n_total_factor):
     size = len(xy)
     xy = xy[:, 0:2]
     x = xy[:, 0]
@@ -275,19 +335,52 @@ def test_ppmi_hypothesis(xy, as_prob, n_total_factor, k, normalize):
         xy = xy / n_total
         n_total = None
 
-    if k < 1 or (k > 1 and normalize):
-        with pytest.raises(ValueError):
-            tokenseq.ppmi(x, y, xy, n_total=n_total, k=k, normalize=normalize)
-    else:
-        res = tokenseq.ppmi(x, y, xy, n_total=n_total, k=k, normalize=normalize)
-        assert isinstance(res, np.ndarray)
-        assert len(res) == len(x)
+    with pytest.raises(ValueError):
+        tokenseq.ppmi(x, y, xy, n_total=n_total, alpha=0.75)
+    with pytest.raises(ValueError):
+        tokenseq.ppmi(x, y, xy, n_total=n_total, add_k_smoothing=1.5)
 
-        if np.all(x > 0) and np.all(y > 0):
-            assert np.sum(np.isnan(res)) == 0
-            if normalize:
-                assert np.all(res >= 0) and np.all(res <= 1)
-            else:
+    res = tokenseq.ppmi(x, y, xy, n_total=n_total)
+    assert isinstance(res, np.ndarray)
+    assert len(res) == len(x)
+
+    if np.all(x > 0) and np.all(y > 0):
+        assert np.sum(np.isnan(res)) == 0
+        assert np.all(res >= 0)
+
+
+@given(xy=strategy_2d_array(int, 0, 100, min_side=2, max_side=100),
+       as_prob=st.booleans(),
+       alpha=st.one_of(st.just(1.0), st.floats(min_value=0.1, max_value=2.0)),
+       add_k_smoothing=st.one_of(st.just(0.0), st.floats(min_value=0.1, max_value=2.0)))
+def test_ppmi_matrix_hypothesis(xy, as_prob, alpha, add_k_smoothing):
+    if as_prob:
+        if np.sum(xy) > 0:
+            xy = xy / np.sum(xy)
+        else:
+            xy = xy.astype('float')
+
+    kwargs = dict(add_k_smoothing=add_k_smoothing, alpha=alpha)
+
+    if as_prob and add_k_smoothing != 0.0:
+        with pytest.raises(ValueError):
+            tokenseq.ppmi(xy, **kwargs)
+    else:
+        if as_prob and not np.isclose(np.sum(xy), 1.0):
+            with pytest.raises(ValueError):
+                tokenseq.ppmi(xy, **kwargs)
+        elif as_prob and (alpha != 1.0 or add_k_smoothing != 0.0):
+            with pytest.raises(ValueError):
+                tokenseq.ppmi(xy, **kwargs)
+        elif not as_prob and np.sum(xy) == 0 and add_k_smoothing == 0.0:
+            with pytest.raises(ValueError):
+                tokenseq.ppmi(xy, **kwargs)
+        else:
+            res = tokenseq.ppmi(xy, **kwargs)
+            assert isinstance(res, np.ndarray)
+            assert res.shape == xy.shape
+
+            if np.sum(np.isnan(res)) == 0:
                 assert np.all(res >= 0)
 
 
