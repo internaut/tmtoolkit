@@ -305,6 +305,33 @@ def mat2d_window_from_indices(mat: np.ndarray,
         return view
 
 
+def partial_sparse_log(x: sparse.spmatrix, logfn: Callable[[np.ndarray], np.ndarray] = np.log) -> sparse.spmatrix:
+    """
+    Apply logarithm function `logfn` to all non-zero elements in sparse matrix `x`.
+
+    .. note:: Applying :math:`\log(x)` only to non-zero elements in :math:`x` does not produce mathematically correct
+              results, since :math:`\log(0)` is not defined (but :math:`\log(x)` approaches minus infinity if :math:`x`
+              goes toward 0). However, if you further process a matrix `x`, e.g. by replacing negative values with 0
+              as for example in the PPMI calculation, this function is still useful.
+
+    :param x: a sparse matrix
+    :param logfn: a logarithm function that accepts a numpy array and returns a numpy array
+    :return: a sparse matrix with `logfn` applied to all non-zero elements
+    """
+    input_fmt = x.getformat()
+
+    if input_fmt != 'coo':
+        x = x.tocoo()
+
+    x.data = logfn(x.data)
+    x.eliminate_zeros()
+
+    if input_fmt != 'coo':
+        return x.asformat(input_fmt)
+    else:
+        return x
+
+
 def combine_sparse_matrices_columnwise(matrices: Sequence,
                                        col_labels: Sequence[Sequence[StrOrInt]],
                                        row_labels: Sequence[Sequence[str]] = None,

@@ -17,10 +17,11 @@ from typing import Union, Tuple, List, Iterable, Set, Optional, Callable, Mappin
 
 import globre
 import numpy as np
+from scipy import sparse
 
 from ._metrics import pmi, pmi2, pmi3, npmi, ppmi, simple_collocation_counts
 from ..types import StrOrInt
-from ..utils import empty_chararray, flatten_list
+from ..utils import empty_chararray, flatten_list, indices_of_matches
 
 
 def pad_sequence(s: Union[Tuple[StrOrInt, ...], List[StrOrInt], np.ndarray], left: int, right: int,
@@ -195,38 +196,27 @@ def token_collocations(sentences: List[List[StrOrInt]], threshold: Optional[floa
     if n_tok < 2:       # can't possibly have any collocations with fewer than 2 tokens
         return []
 
-    if vocab_counts is None:
-        vocab_counts = Counter(flatten_list(sentences))
-
+    # count bigram occurrences
     ngramsize = 2
-    bigrams = []
+    bigrams = Counter()
     for sent_tokens in sentences:
         if len(sent_tokens) >= ngramsize:
-            bigrams.extend(token_ngrams(sent_tokens, n=ngramsize, join=False, embed_tokens=embed_tokens,
-                                        keep_embed_tokens=False))
+            bigrams.update(map(tuple, token_ngrams(sent_tokens, n=ngramsize, join=False)))
 
-    if tokens_as_hashes:
-        bigrams = np.array(bigrams, dtype='uint64')
-    else:
-        bigrams = np.array(bigrams, dtype='str')
+    # split bigrams into tuples of first and second tokens
+    bg_split = tuple(zip(*bigrams.keys()))
+    # produce a sorted tuples of unique tokens per bigram "side"
+    bg_vocab_split = tuple(map(sorted, map(set, bg_split)))
 
-    bigrams, n_bigrams = np.unique(bigrams, return_counts=True, axis=0)
+    # turn these tuples into numpy arrays
+    dtype = 'uint64' if tokens_as_hashes else 'str'
+    bg_first, bg_second = map(lambda x: np.array(x, dtype=dtype), bg_split)
+    bg_vocab_first, bg_vocab_second = map(lambda x: np.array(x, dtype=dtype), bg_vocab_split)
 
-    if min_count > 1:   # filter bigrams
-        mask = n_bigrams >= min_count
-        bigrams = bigrams[mask]
-        n_bigrams = n_bigrams[mask]
-
-    if len(n_bigrams) == 0:       # can't possibly have any collocations with no bigrams after filtering
-        return []
-
-    # first and last token of bigrams
-    bg_first = bigrams[:, 0]
-    bg_last = bigrams[:, 1]
-
-    # num. of occurrences for first and last token of bigrams
-    n_first = np.array([vocab_counts[t] for t in bg_first], dtype=n_bigrams.dtype)
-    n_last = np.array([vocab_counts[t] for t in bg_last], dtype=n_bigrams.dtype)
+    # create a sparse matrix
+    row_ind = indices_of_matches(bg_first, bg_vocab_first, b_is_sorted=True, check_a_in_b=True)
+    col_ind = indices_of_matches(bg_second, bg_vocab_second, b_is_sorted=True, check_a_in_b=True)
+    mat = sparse.coo_matrix((tuple(bigrams.values()), (row_ind, col_ind)), dtype='uint32')
 
     # apply scoring function
     scores = statistic(x=n_first, y=n_last, xy=n_bigrams, n_total=n_tok, **statistic_kwargs)

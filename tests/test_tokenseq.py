@@ -12,6 +12,7 @@ import pytest
 import random
 from hypothesis import given, strategies as st
 from hypothesis.extra.numpy import arrays, array_shapes
+from scipy import sparse
 
 from tmtoolkit import tokenseq
 from tmtoolkit.utils import as_chararray, flatten_list
@@ -261,15 +262,19 @@ def test_pmi_vectors_hypothesis(xy, as_prob, n_total_factor, k, normalize):
 
 @given(xy=strategy_2d_array(int, 0, 100, min_side=2, max_side=100),
        as_prob=st.booleans(),
+       as_sparse=st.sampled_from([None, 'csc', 'csr']),
        k=st.integers(min_value=0, max_value=5),
        alpha=st.one_of(st.just(1.0), st.floats(min_value=0.1, max_value=2.0)),
        normalize=st.booleans())
-def test_pmi_matrix_hypothesis(xy, as_prob, k, alpha, normalize):
+def test_pmi_matrix_hypothesis(xy, as_prob, as_sparse, k, alpha, normalize):
     if as_prob:
         if np.sum(xy) > 0:
             xy = xy / np.sum(xy)
         else:
             xy = xy.astype('float')
+
+    if as_sparse:
+        xy = sparse.coo_matrix(xy).asformat(as_sparse)
 
     kwargs = dict(k=k, normalize=normalize)
 
@@ -278,23 +283,24 @@ def test_pmi_matrix_hypothesis(xy, as_prob, k, alpha, normalize):
             tokenseq.pmi(xy, **kwargs)
     else:
         with pytest.raises(ValueError):
-            tokenseq.pmi(xy[np.newaxis], **kwargs)
+            tokenseq.pmi(xy.A[np.newaxis] if as_sparse else xy[np.newaxis], **kwargs)
         with pytest.raises(ValueError):
             tokenseq.pmi(xy, xy[0], **kwargs)
         with pytest.raises(ValueError):
             tokenseq.pmi(xy, xy[0], xy[1], **kwargs)
 
-        if as_prob:
-            with pytest.raises(ValueError):
-                tokenseq.pmi(xy - 10.0, **kwargs)
-            with pytest.raises(ValueError):
-                tokenseq.pmi(xy + 10.0, **kwargs)
-            if alpha != 1.0:
+        if not as_sparse:
+            if as_prob:
                 with pytest.raises(ValueError):
-                    tokenseq.pmi(xy, **kwargs, alpha=alpha)
-        else:
-            with pytest.raises(ValueError):
-                tokenseq.pmi(xy - 101, **kwargs)
+                    tokenseq.pmi(xy - 10.0, **kwargs)
+                with pytest.raises(ValueError):
+                    tokenseq.pmi(xy + 10.0, **kwargs)
+                if alpha != 1.0:
+                    with pytest.raises(ValueError):
+                        tokenseq.pmi(xy, **kwargs, alpha=alpha)
+            else:
+                with pytest.raises(ValueError):
+                    tokenseq.pmi(xy - 101, **kwargs)
 
         if as_prob and not np.isclose(np.sum(xy), 1.0):
             with pytest.raises(ValueError):
@@ -351,14 +357,20 @@ def test_ppmi_hypothesis(xy, as_prob, n_total_factor):
 
 @given(xy=strategy_2d_array(int, 0, 100, min_side=2, max_side=100),
        as_prob=st.booleans(),
+       as_sparse=st.sampled_from([None, 'csc', 'csr']),
        alpha=st.one_of(st.just(1.0), st.floats(min_value=0.1, max_value=2.0)),
        add_k_smoothing=st.one_of(st.just(0.0), st.floats(min_value=0.1, max_value=2.0)))
-def test_ppmi_matrix_hypothesis(xy, as_prob, alpha, add_k_smoothing):
+def test_ppmi_matrix_hypothesis(xy, as_prob, as_sparse, alpha, add_k_smoothing):
     if as_prob:
         if np.sum(xy) > 0:
             xy = xy / np.sum(xy)
         else:
             xy = xy.astype('float')
+
+    xy_dense = None
+    if as_sparse:
+        xy_dense = xy
+        xy = sparse.coo_matrix(xy).asformat(as_sparse)
 
     kwargs = dict(add_k_smoothing=add_k_smoothing, alpha=alpha)
 
@@ -375,13 +387,26 @@ def test_ppmi_matrix_hypothesis(xy, as_prob, alpha, add_k_smoothing):
         elif not as_prob and np.sum(xy) == 0 and add_k_smoothing == 0.0:
             with pytest.raises(ValueError):
                 tokenseq.ppmi(xy, **kwargs)
+        elif as_sparse and add_k_smoothing != 0.0:
+            with pytest.raises(ValueError):
+                tokenseq.ppmi(xy, **kwargs)
         else:
             res = tokenseq.ppmi(xy, **kwargs)
-            assert isinstance(res, np.ndarray)
+            if as_sparse:
+                assert isinstance(res, sparse.spmatrix)
+                res_dense = res.A
+            else:
+                assert isinstance(res, np.ndarray)
+                res_dense = res
             assert res.shape == xy.shape
 
-            if np.sum(np.isnan(res)) == 0:
-                assert np.all(res >= 0)
+            if np.sum(np.isnan(res_dense)) == 0:
+                assert np.all(res_dense >= 0)
+
+            if as_sparse and add_k_smoothing == 0.0:
+                res_dense2 = tokenseq.ppmi(xy_dense, **kwargs)
+                if np.sum(np.isnan(res_dense2)) == 0:
+                    assert np.allclose(res_dense, res_dense2)
 
 
 @given(xy=arrays(int, array_shapes(min_dims=1, max_dims=1)))
