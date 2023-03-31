@@ -19,9 +19,9 @@ import globre
 import numpy as np
 from scipy import sparse
 
-from ._metrics import pmi, pmi2, pmi3, npmi, ppmi, simple_collocation_counts
+from ._metrics import pmi, pmi2, pmi3, npmi, ppmi
 from ..types import StrOrInt
-from ..utils import empty_chararray, flatten_list, indices_of_matches
+from ..utils import empty_chararray, indices_of_matches
 
 
 def pad_sequence(s: Union[Tuple[StrOrInt, ...], List[StrOrInt], np.ndarray], left: int, right: int,
@@ -152,7 +152,7 @@ def token_hash_convert(tokens: Union[Iterable[Union[str, int]], np.ndarray],
 
 def token_collocations(sentences: List[List[StrOrInt]], threshold: Optional[float] = None,
                        min_count: int = 1, embed_tokens: Optional[Iterable] = None,
-                       statistic: Callable = npmi, vocab_counts: Optional[Mapping] = None,
+                       statistic: Callable[[sparse.spmatrix, ...], Union[sparse.spmatrix, np.ndarray]] = ppmi,
                        glue: Optional[str] = None, return_statistic: bool = True, rank: Optional[str] = 'desc',
                        tokens_as_hashes: bool = False, hashes2tokens: Optional[Union[Dict[int, str], dict]] = None,
                        **statistic_kwargs) \
@@ -166,9 +166,9 @@ def token_collocations(sentences: List[List[StrOrInt]], threshold: Optional[floa
     :param min_count: ignore collocations with number of occurrences below this threshold
     :param embed_tokens: tokens that, if occurring inside an n-gram, are not counted; see :func:`token_ngrams`
     :param statistic: function to calculate the statistic measure from the token counts; use one of the
-                      ``[n]pmi`` functions provided in this module or provide your own function which
-                      must accept parameters ``x, y, xy, n_total``; see :func:`~pmi` for more information
-    :param vocab_counts: pass already computed token type counts to prevent computing these again in this function
+                      ``[n|p]pmi`` functions provided in this module or provide your own function which
+                      must accept a sparse matrix ``x`` and return a matrix of the same shape; see :func:`~pmi` for
+                      more information
     :param glue: if not None, provide a string that is used to join the collocation tokens
     :param return_statistic: also return computed statistic
     :param rank: if not None, rank the results according to the computed statistic in ascending (``rank='asc'``) or
@@ -201,7 +201,14 @@ def token_collocations(sentences: List[List[StrOrInt]], threshold: Optional[floa
     bigrams = Counter()
     for sent_tokens in sentences:
         if len(sent_tokens) >= ngramsize:
-            bigrams.update(map(tuple, token_ngrams(sent_tokens, n=ngramsize, join=False)))
+            bigrams.update(map(tuple, token_ngrams(sent_tokens, n=ngramsize, join=False, embed_tokens=embed_tokens,
+                                                   keep_embed_tokens=False)))
+
+    if min_count:
+        bigrams = {bg: n for bg, n in bigrams.items() if n >= min_count}
+
+    if not bigrams:    # no bigrams generated (input only consisted of empty string tokens or all below `min_count`)
+        return []
 
     # split bigrams into tuples of first and second tokens
     bg_split = tuple(zip(*bigrams.keys()))
@@ -213,18 +220,22 @@ def token_collocations(sentences: List[List[StrOrInt]], threshold: Optional[floa
     bg_first, bg_second = map(lambda x: np.array(x, dtype=dtype), bg_split)
     bg_vocab_first, bg_vocab_second = map(lambda x: np.array(x, dtype=dtype), bg_vocab_split)
 
-    # create a sparse matrix
+    # create a sparse collocation matrix
     row_ind = indices_of_matches(bg_first, bg_vocab_first, b_is_sorted=True, check_a_in_b=True)
     col_ind = indices_of_matches(bg_second, bg_vocab_second, b_is_sorted=True, check_a_in_b=True)
     mat = sparse.coo_matrix((tuple(bigrams.values()), (row_ind, col_ind)), dtype='uint32')
 
     # apply scoring function
-    scores = statistic(x=n_first, y=n_last, xy=n_bigrams, n_total=n_tok, **statistic_kwargs)
-    assert len(scores) == len(bigrams), 'length of scores array must match number of unique bigrams'
+    scores = statistic(mat.tocsr(), **statistic_kwargs)
+    assert scores.shape == mat.shape, "returned matrix' shape from statistic function must match collocation matrix " \
+                                      "shape"
+    if isinstance(scores, sparse.spmatrix):
+        scores = scores.todok()
 
     # build result
     res = []
-    for bg, s in zip(bigrams, scores):
+    for bg, (i, j) in zip(bigrams, zip(row_ind, col_ind)):
+        s = scores[i, j]
         if hashes2tokens is None:
             bg = tuple(bg)
         else:

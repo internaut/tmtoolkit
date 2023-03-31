@@ -188,10 +188,12 @@ def ppmi(x: Union[np.ndarray, sparse.spmatrix], y: Optional[np.ndarray] = None, 
         pmi_val = pmi(x, y, xy, n_total=n_total, logfn=logfn, k=1, alpha=alpha, normalize=False)
     else:
         if isinstance(x, sparse.spmatrix):
-            input_sparse_fmt = x.getformat()
             if add_k_smoothing != 0.0:
-                raise ValueError('`add_k_smoothing` can only be used when `x` is **not** a sparse matrix')
-            logfn = partial(partial_sparse_log, logfn=logfn)  # with this, we can retain the sparse matrix
+                # `add_k_smoothing` can only be used when `x` is **not** a sparse matrix
+                x = x.A
+            else:
+                input_sparse_fmt = x.getformat()
+                logfn = partial(partial_sparse_log, logfn=logfn)  # with this, we can retain the sparse matrix
 
         if x.dtype.kind in 'ui' and add_k_smoothing != 0.0:
             if isinstance(add_k_smoothing, int):
@@ -215,17 +217,3 @@ def ppmi(x: Union[np.ndarray, sparse.spmatrix], y: Optional[np.ndarray] = None, 
         pmi_val.data = np.maximum(pmi_val.data, 0)
         pmi_val.eliminate_zeros()
         return pmi_val.asformat(input_sparse_fmt)
-
-
-def simple_collocation_counts(x: Optional[np.ndarray], y: Optional[np.ndarray], xy: np.ndarray, n_total: Optional[int]):
-    """
-    "Statistic" function that can be used in :func:`~tmtoolkit.tokenseq.token_collocations` and will simply return the
-    number of collocations between tokens *x* and *y* passed as `xy`. Mainly useful for debugging purposes.
-
-    :param x: unused
-    :param y: unused
-    :param xy: counts for collocations of *x* and *y*
-    :param n_total: total number of tokens (strictly positive)
-    :return: simply returns `xy`
-    """
-    return xy.astype(float)

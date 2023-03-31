@@ -11,13 +11,12 @@ import numpy as np
 import pytest
 import random
 from hypothesis import given, strategies as st
-from hypothesis.extra.numpy import arrays, array_shapes
 from scipy import sparse
 
 from tmtoolkit import tokenseq
 from tmtoolkit.utils import as_chararray, flatten_list
 
-from ._testtools import strategy_tokens, strategy_2d_array, strategy_lists_of_tokens
+from ._testtools import strategy_tokens, strategy_2d_array, strategy_lists_of_tokens, identity
 
 
 @given(s=strategy_tokens(string.printable),
@@ -387,12 +386,9 @@ def test_ppmi_matrix_hypothesis(xy, as_prob, as_sparse, alpha, add_k_smoothing):
         elif not as_prob and np.sum(xy) == 0 and add_k_smoothing == 0.0:
             with pytest.raises(ValueError):
                 tokenseq.ppmi(xy, **kwargs)
-        elif as_sparse and add_k_smoothing != 0.0:
-            with pytest.raises(ValueError):
-                tokenseq.ppmi(xy, **kwargs)
         else:
             res = tokenseq.ppmi(xy, **kwargs)
-            if as_sparse:
+            if as_sparse and add_k_smoothing == 0.0:
                 assert isinstance(res, sparse.spmatrix)
                 res_dense = res.A
             else:
@@ -409,69 +405,68 @@ def test_ppmi_matrix_hypothesis(xy, as_prob, as_sparse, alpha, add_k_smoothing):
                     assert np.allclose(res_dense, res_dense2)
 
 
-@given(xy=arrays(int, array_shapes(min_dims=1, max_dims=1)))
-def test_simple_collocation_counts_hypothesis(xy):
-    res = tokenseq.simple_collocation_counts(None, None, xy, None)
-    assert isinstance(res, np.ndarray)
-    assert len(res) == len(xy)
-
-
 @pytest.mark.parametrize('args, expected', [
     (
         {},
-        [(('e', 'f'), 0.8105361810656604),
-         (('b', 'c'), 0.6915604067044995),
-         (('d', 'e'), 0.6122380649615099),
-         (('a', 'b'), 0.43193903282626694),
-         (('c', 'd'), 0.43193903282626694),
-         (('c', 'e'), 0.3823761795182354),
-         (('f', 'b'), 0.18728849070804096),
-         (('c', 'b'), 0.14367999690515007),
-         (('e', 'b'), 0.044177097787776946)]
+        [(('e', 'f'), 1.6094379124341005),
+         (('d', 'e'), 1.6094379124341),
+         (('b', 'c'), 1.3217558399823195),
+         (('a', 'b'), 1.09861228866811),
+         (('f', 'b'), 1.09861228866811),
+         (('c', 'd'), 1.0986122886681096),
+         (('c', 'e'), 0.6931471805599454),
+         (('c', 'b'), 0.18232155679395445),
+         (('e', 'b'), 0.0)]
     ),
     (
         dict(min_count=2),
-        [(('e', 'f'), 0.8105361810656604),
-         (('b', 'c'), 0.6915604067044995),
-         (('c', 'e'), 0.3823761795182354),
-         (('c', 'b'), 0.14367999690515007)]
+        [(('e', 'f'), 1.6094379124341003),
+         (('b', 'c'), 0.916290731874155),
+         (('c', 'b'), 0.9162907318741549),
+         (('c', 'e'), 0.9162907318741549)]
     ),
     (
         dict(threshold=0.5),
-        [(('e', 'f'), 0.8105361810656604),
-         (('b', 'c'), 0.6915604067044995),
-         (('d', 'e'), 0.6122380649615099)]
+        [(('e', 'f'), 1.6094379124341005),
+         (('d', 'e'), 1.6094379124341),
+         (('b', 'c'), 1.3217558399823195),
+         (('a', 'b'), 1.09861228866811),
+         (('f', 'b'), 1.09861228866811),
+         (('c', 'd'), 1.0986122886681096),
+         (('c', 'e'), 0.6931471805599454)]
     ),
     (
         dict(min_count=2, threshold=0.5, glue='_&_'),
-        [('e_&_f', 0.8105361810656604),
-         ('b_&_c', 0.6915604067044995)]
+        [('e_&_f', 1.6094379124341003),
+         ('b_&_c', 0.916290731874155),
+         ('c_&_b', 0.9162907318741549),
+         ('c_&_e', 0.9162907318741549)]
     ),
     (
-        dict(min_count=2, statistic=tokenseq.pmi),
-        [(('e', 'f'), 1.7346010553881064),
-         (('b', 'c'), 1.000631880307906),
-         (('c', 'e'), 0.8183103235139513),
-         (('c', 'b'), 0.30748469974796055)]
+        dict(min_count=2, statistic=tokenseq.npmi),
+        [(('b', 'c'), 1.0),
+         (('e', 'f'), 1.0),
+         (('c', 'b'), 0.5693234419266069),
+         (('c', 'e'), 0.5693234419266069)]
     ),
     (
         dict(min_count=2, statistic=tokenseq.pmi2),
-        [(('e', 'f'), -0.4054651081081644),
-         (('b', 'c'), -0.4462871026284194),
-         (('c', 'e'), -1.3217558399823195),
-         (('c', 'b'), -1.8325814637483102)]
+        [(('b', 'c'), 0.0),
+         (('e', 'f'), 0.0),
+         (('c', 'b'), -0.6931471805599454),
+         (('c', 'e'), -0.6931471805599454)]
     ),
     (
         dict(min_count=2, statistic=tokenseq.pmi3),
-        [(('b', 'c'), -1.8932060855647448),
-         (('e', 'f'), -2.5455312716044354),
-         (('c', 'e'), -3.4618220034785905),
-         (('c', 'b'), -3.972647627244581)]
+        [(('b', 'c'), -0.916290731874155),
+         (('e', 'f'), -1.6094379124341003),
+         (('c', 'b'), -2.302585092994046),
+         (('c', 'e'), -2.302585092994046)]
     )
 ])
 def test_token_collocations(args, expected):
-    sentences = tokens = ['a b c d e f b c b'.split(),
-                          'c e b c b c e f'.split()]
+    sentences = ['a b c d e f b c b'.split(),
+                 'c e b c b c e f'.split()]
     res = tokenseq.token_collocations(sentences, **args)
     colloc, stat = zip(*res)
     expected_colloc, expected_stat = zip(*expected)
@@ -484,13 +479,12 @@ def test_token_collocations(args, expected):
        min_count=st.integers(),
        pass_embed_tokens=st.integers(min_value=0, max_value=3),
        statistic=st.sampled_from([tokenseq.pmi, tokenseq.npmi, tokenseq.pmi2, tokenseq.pmi3,
-                                  tokenseq.simple_collocation_counts]),
-       pass_vocab_counts=st.booleans(),
+                                  tokenseq.ppmi, identity]),
        glue=st.one_of(st.none(), st.text(string.printable)),
        return_statistic=st.booleans(),
        rank=st.sampled_from([None, 'asc', 'desc'])
        )
-def test_token_collocations_hypothesis(sentences, threshold, min_count, pass_embed_tokens, statistic, pass_vocab_counts,
+def test_token_collocations_hypothesis(sentences, threshold, min_count, pass_embed_tokens, statistic,
                                        glue, return_statistic, rank):
     ngramsize = 2
     tok = flatten_list(sentences)
@@ -500,14 +494,8 @@ def test_token_collocations_hypothesis(sentences, threshold, min_count, pass_emb
     else:
         embed_tokens = None
 
-    if pass_vocab_counts:
-        vocab_counts = Counter(tok)
-    else:
-        vocab_counts = None
-
     args = dict(sentences=sentences, threshold=threshold, min_count=min_count, embed_tokens=embed_tokens,
-                statistic=statistic, vocab_counts=vocab_counts, glue=glue,
-                return_statistic=return_statistic, rank=rank)
+                statistic=statistic, glue=glue, return_statistic=return_statistic, rank=rank)
 
     if min_count < 0:
         with pytest.raises(ValueError):
@@ -526,7 +514,7 @@ def test_token_collocations_hypothesis(sentences, threshold, min_count, pass_emb
                 assert isinstance(stat, float)
                 if threshold:
                     assert stat >= threshold
-                if statistic is tokenseq.simple_collocation_counts:
+                if statistic is identity:
                     assert stat >= min_count
                 if rank:
                     statvalues.append(stat)
