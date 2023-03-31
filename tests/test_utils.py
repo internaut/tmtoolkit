@@ -19,7 +19,7 @@ from tmtoolkit.utils import (pickle_data, unpickle_file, flatten_list, greedy_pa
                              linebreaks_win2unix, split_func_args, empty_chararray, as_chararray, merge_dicts,
                              merge_sets, sample_dict, enable_logging, set_logging_level, disable_logging, dict2df,
                              applychain, indices_of_matches, chararray_elem_size, check_context_size,
-                             pairwise_max_table)
+                             pairwise_max_table, partial_sparse_log)
 
 PRINTABLE_ASCII_CHARS = [chr(c) for c in range(32, 127)]
 
@@ -400,6 +400,31 @@ def test_mat2d_window_from_indices(mat, n_row_indices, n_col_indices, copy):
     for w_y, m_y in enumerate(row_indices_check):
         for w_x, m_x in enumerate(col_indices_check):
             assert window[w_y, w_x] == mat[m_y, m_x]
+
+
+@given(input=strategy_dtm_small(),
+       logfn=st.sampled_from([np.log, np.log2, np.log10, np.log1p]),
+       sparse_format=st.sampled_from(['csc', 'csr', 'lil', 'dok', 'coo']))
+def test_partial_sparse_log(input, logfn, sparse_format):
+    x = sparse.csc_matrix(input)
+    if sparse_format != 'csc':
+        x = x.asformat(sparse_format)
+
+    y = partial_sparse_log(x, logfn=logfn)
+
+    assert isinstance(y, sparse.spmatrix)
+    assert y.getformat() == sparse_format
+    assert y.shape == x.shape
+    assert y.dtype.kind == 'f'
+
+    if logfn is not np.log1p:
+        y_dense = y.A
+        n_gt_1 = np.sum(input > 1)
+        assert y.nnz == n_gt_1
+        if n_gt_1 > 0:
+            assert np.all(y_dense[y_dense != 0.0] == logfn(input[input > 1]))
+        else:
+            assert np.sum(y_dense != 0.0) == n_gt_1
 
 
 @given(dicts=st.lists(st.dictionaries(st.text(), st.integers())),

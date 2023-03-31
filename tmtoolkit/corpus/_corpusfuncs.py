@@ -34,10 +34,10 @@ from ..bow.dtm import create_sparse_dtm, dtm_to_dataframe
 from ..utils import merge_dicts, empty_chararray, as_chararray, \
     flatten_list, combine_sparse_matrices_columnwise, pickle_data, unpickle_file, merge_sets, \
     path_split, read_text_file, linebreaks_win2unix, sample_dict, dict2df, check_context_size, indices_of_matches
-from ..tokenseq import token_lengths, token_ngrams, token_match_multi_pattern, index_windows_around_matches, \
-    token_match_subsequent, token_join_subsequent, npmi, token_collocations, numbertoken_to_magnitude, token_match, \
-    collapse_tokens, simplify_unicode_chars, unique_chars, DOC_START, DOC_END, SPECIAL_TOKENS, pad_sequence, \
-    token_hash_convert, OOV
+from ..strings import numbertoken_to_magnitude, simplify_unicode_chars, DOC_START, DOC_END, SPECIAL_TOKENS, OOV
+from ..tokenseq import pad_sequence, unique_chars, token_lengths, collapse_tokens, token_hash_convert, ppmi, \
+    token_collocations, token_match, token_match_multi_pattern, token_match_subsequent, token_join_subsequent, \
+    token_ngrams, index_windows_around_matches
 from ..types import Proportion, StrOrInt
 
 from ._common import DATAPATH, LANGUAGE_LABELS, TOKENMAT_ATTRS, simplified_pos
@@ -1081,7 +1081,7 @@ def corpus_collocations(docs: Corpus,
                         min_count: int = 1,
                         embed_tokens_min_docfreq: Optional[Union[int, float]] = None,
                         embed_tokens_set: Optional[Set] = None,
-                        statistic: Callable = npmi,
+                        statistic: Callable = ppmi,
                         return_statistic: bool = True,
                         rank: Optional[str] = 'desc',
                         as_table: bool = True,
@@ -1128,8 +1128,6 @@ def corpus_collocations(docs: Corpus,
 
     logger.debug('getting flattened tokens')
     tok = corpus_tokens_flattened(docs, select=select, sentences=True, tokens_as_hashes=True, as_array=True)
-    logger.debug('getting vocabulary counts')
-    vocab_counts = vocabulary_counts(docs, tokens_as_hashes=True)
 
     # generate ``embed_tokens`` set as used in :func:`~tmtoolkit.tokenseq.token_collocations`
     logger.debug('creating embed tokens')
@@ -1139,7 +1137,7 @@ def corpus_collocations(docs: Corpus,
     # identify collocations
     logger.debug('identifying collocations')
     colloc = token_collocations(tok, threshold=threshold, min_count=min_count, embed_tokens=embed_tokens,
-                                vocab_counts=vocab_counts, statistic=statistic, return_statistic=return_statistic,
+                                statistic=statistic, return_statistic=return_statistic,
                                 rank=rank, glue=glue, tokens_as_hashes=True, hashes2tokens=docs.bimaps['token'],
                                 **statistic_kwargs)
 
@@ -2633,7 +2631,7 @@ def join_collocations_by_statistic(docs: Corpus, /, threshold: float,
                                    select: Optional[Union[str, Collection[str]]] = None, glue: str = '_',
                                    min_count: int = 1, embed_tokens_min_docfreq: Optional[Union[int, float]] = None,
                                    embed_tokens_set: Optional[Set] = None,
-                                   statistic: Callable = npmi, return_joint_tokens: bool = False,
+                                   statistic: Callable = ppmi, return_joint_tokens: bool = False,
                                    inplace: bool = True, **statistic_kwargs) \
         -> Optional[Union[Corpus, Tuple[Corpus, Set[str]]]]:
     """
@@ -2667,8 +2665,6 @@ def join_collocations_by_statistic(docs: Corpus, /, threshold: float,
     # get tokens as hashes
     logger.debug('getting flattened tokens')
     tok_flat = corpus_tokens_flattened(docs, select=select, sentences=True, tokens_as_hashes=True)
-    logger.debug('getting flattened tokens')
-    vocab_counts = vocabulary_counts(docs, select=select, tokens_as_hashes=True)
 
     # generate ``embed_tokens`` set as used in :func:`~tmtoolkit.tokenseq.token_collocations`
     logger.debug('creating embed tokens')
@@ -2678,7 +2674,7 @@ def join_collocations_by_statistic(docs: Corpus, /, threshold: float,
     # identify collocations
     logger.debug('identifying collocations')
     colloc = token_collocations(tok_flat, threshold=threshold, min_count=min_count, embed_tokens=embed_tokens,
-                                vocab_counts=vocab_counts, statistic=statistic, return_statistic=False,
+                                statistic=statistic, return_statistic=False,
                                 rank=None, tokens_as_hashes=True, **statistic_kwargs)
 
     hash2token = docs.bimaps['token']

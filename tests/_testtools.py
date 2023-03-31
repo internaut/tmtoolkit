@@ -4,6 +4,10 @@ from hypothesis import strategies as st
 from hypothesis.extra.numpy import arrays, array_shapes
 
 
+def identity(x):
+    return x
+
+
 def strategy_2d_array(dtype, minval=0, maxval=None, **kwargs):
     if 'min_side' in kwargs:
         min_side = kwargs.pop('min_side')

@@ -6,17 +6,17 @@ Tests for tmtoolkit.tokenseq module.
 
 import string
 from collections import Counter
-from importlib.util import find_spec
 
 import numpy as np
 import pytest
 import random
 from hypothesis import given, strategies as st
-from hypothesis.extra.numpy import arrays, array_shapes
+from scipy import sparse
 
-from ._testtools import strategy_tokens, strategy_2d_array, strategy_lists_of_tokens
-from tmtoolkit.utils import as_chararray, flatten_list
 from tmtoolkit import tokenseq
+from tmtoolkit.utils import as_chararray, flatten_list
+
+from ._testtools import strategy_tokens, strategy_2d_array, strategy_lists_of_tokens, identity
 
 
 @given(s=strategy_tokens(string.printable),
@@ -186,7 +186,7 @@ def test_token_hash_convert(tokens, tokens_as_hashes, tokens_as_array, special_t
 
     collapse = ' ' if collapse and tokens_as_hashes else None
     res = tokenseq.token_hash_convert(tokens, stringstore=stringstore, special_tokens=special_tokens_dict,
-                                      collapse=collapse, arr_dtype_for_hashes='int64')
+                                                collapse=collapse, arr_dtype_for_hashes='int64')
 
     if collapse == ' ':
         assert isinstance(res, str)
@@ -218,54 +218,12 @@ def test_token_hash_convert(tokens, tokens_as_hashes, tokens_as_array, special_t
                 assert all(isinstance(t, str) for t in res)
 
 
-
-@given(token=st.one_of(st.text(string.printable),
-                       st.sampled_from(['\u00C7', '\u0043\u0327', '\u0043\u0332', 'é', 'ῷ'])),
-       method=st.sampled_from(['icu', 'ascii', 'nonexistent']),
-       ascii_encoding_errors=st.sampled_from(['ignore', 'replace']))
-def test_simplify_unicode_chars(token, method, ascii_encoding_errors):
-    if method == 'icu' and not find_spec('icu'):
-        with pytest.raises(RuntimeError, match='^package PyICU'):
-            tokenseq.simplify_unicode_chars(token, method=method)
-    elif method == 'nonexistent':
-        with pytest.raises(ValueError, match='`method` must be either "icu" or "ascii"'):
-            tokenseq.simplify_unicode_chars(token, method=method)
-    else:
-        res = tokenseq.simplify_unicode_chars(token, method=method)
-        assert isinstance(res, str)
-        if method == 'icu' or (method == 'ascii' and ascii_encoding_errors == 'ignore'):
-            assert len(res) <= len(token)
-
-        if token in {'\u00C7', '\u0043\u0327', '\u0043\u0332'}:
-            assert res == 'C'
-        elif token == 'é':
-            assert res == 'e'
-        elif token == 'ῷ':
-            if method == 'icu':
-                assert res == 'ω'
-            else:  # method == 'ascii'
-                assert res == '' if ascii_encoding_errors == 'ignore' else '???'
-
-
-@pytest.mark.parametrize('value, expected', [
-    ('', ''),
-    ('no tags', 'no tags'),
-    ('<b>', ''),
-    ('<b>x</b>', 'x'),
-    ('<b>x &amp; y</b>', 'x & y'),
-    ('<b>x &amp; <i>y</i> = &#9733;</b>', 'x & y = ★'),
-    ('<b>x &amp; <i>y = &#9733;</b>', 'x & y = ★'),
-])
-def test_strip_tags(value, expected):
-    assert tokenseq.strip_tags(value) == expected
-
-
 @given(xy=strategy_2d_array(int, 0, 100, min_side=2, max_side=100),
        as_prob=st.booleans(),
        n_total_factor=st.floats(min_value=1, max_value=10, allow_nan=False),
        k=st.integers(min_value=0, max_value=5),
        normalize=st.booleans())
-def test_pmi_hypothesis(xy, as_prob, n_total_factor, k, normalize):
+def test_pmi_vectors_hypothesis(xy, as_prob, n_total_factor, k, normalize):
     size = len(xy)
     xy = xy[:, 0:2]
     x = xy[:, 0]
@@ -283,6 +241,9 @@ def test_pmi_hypothesis(xy, as_prob, n_total_factor, k, normalize):
         with pytest.raises(ValueError):
             tokenseq.pmi(x, y, xy, n_total=n_total, k=k, normalize=normalize)
     else:
+        with pytest.raises(ValueError):
+            tokenseq.pmi(x, y, xy, n_total=n_total, k=k, alpha=0.75, normalize=normalize)
+
         res = tokenseq.pmi(x, y, xy, n_total=n_total, k=k, normalize=normalize)
         assert isinstance(res, np.ndarray)
         assert len(res) == len(x)
@@ -298,69 +259,214 @@ def test_pmi_hypothesis(xy, as_prob, n_total_factor, k, normalize):
                 assert np.all(res == tokenseq.pmi3(x, y, xy, n_total=n_total))
 
 
-@given(xy=arrays(int, array_shapes(min_dims=1, max_dims=1)))
-def test_simple_collocation_counts_hypothesis(xy):
-    res = tokenseq.simple_collocation_counts(None, None, xy, None)
+@given(xy=strategy_2d_array(int, 0, 100, min_side=2, max_side=100),
+       as_prob=st.booleans(),
+       as_sparse=st.sampled_from([None, 'csc', 'csr']),
+       k=st.integers(min_value=0, max_value=5),
+       alpha=st.one_of(st.just(1.0), st.floats(min_value=0.1, max_value=2.0)),
+       normalize=st.booleans())
+def test_pmi_matrix_hypothesis(xy, as_prob, as_sparse, k, alpha, normalize):
+    if as_prob:
+        if np.sum(xy) > 0:
+            xy = xy / np.sum(xy)
+        else:
+            xy = xy.astype('float')
+
+    if as_sparse:
+        xy = sparse.coo_matrix(xy).asformat(as_sparse)
+
+    kwargs = dict(k=k, normalize=normalize)
+
+    if k < 1 or (k > 1 and normalize):
+        with pytest.raises(ValueError):
+            tokenseq.pmi(xy, **kwargs)
+    else:
+        with pytest.raises(ValueError):
+            tokenseq.pmi(xy.A[np.newaxis] if as_sparse else xy[np.newaxis], **kwargs)
+        with pytest.raises(ValueError):
+            tokenseq.pmi(xy, xy[0], **kwargs)
+        with pytest.raises(ValueError):
+            tokenseq.pmi(xy, xy[0], xy[1], **kwargs)
+
+        if not as_sparse:
+            if as_prob:
+                with pytest.raises(ValueError):
+                    tokenseq.pmi(xy - 10.0, **kwargs)
+                with pytest.raises(ValueError):
+                    tokenseq.pmi(xy + 10.0, **kwargs)
+                if alpha != 1.0:
+                    with pytest.raises(ValueError):
+                        tokenseq.pmi(xy, **kwargs, alpha=alpha)
+            else:
+                with pytest.raises(ValueError):
+                    tokenseq.pmi(xy - 101, **kwargs)
+
+        if as_prob and not np.isclose(np.sum(xy), 1.0):
+            with pytest.raises(ValueError):
+                tokenseq.pmi(xy, **kwargs)
+        elif not as_prob and np.sum(xy) == 0:
+            with pytest.raises(ValueError):
+                tokenseq.pmi(xy, **kwargs)
+        else:
+            res = tokenseq.pmi(xy, **kwargs, alpha=1.0 if as_prob else alpha)
+            assert isinstance(res, np.ndarray)
+            assert res.shape == xy.shape
+
+            if alpha == 1.0:
+                if normalize:
+                    assert np.array_equal(res, tokenseq.npmi(xy), equal_nan=True)
+                    if np.sum(np.isnan(res)) == 0:
+                        assert np.all(res >= -1) and np.all(res <= 1)
+                elif k == 2:
+                    assert np.array_equal(res, tokenseq.pmi2(xy), equal_nan=True)
+                elif k == 3:
+                    assert np.array_equal(res, tokenseq.pmi3(xy), equal_nan=True)
+
+
+@given(xy=strategy_2d_array(int, 0, 100, min_side=2, max_side=100),
+       as_prob=st.booleans(),
+       n_total_factor=st.floats(min_value=1, max_value=10, allow_nan=False))
+def test_ppmi_hypothesis(xy, as_prob, n_total_factor):
+    size = len(xy)
+    xy = xy[:, 0:2]
+    x = xy[:, 0]
+    y = xy[:, 1]
+    xy = np.min(xy, axis=1) * np.random.uniform(0, 1, size)
+    n_total = 1 + n_total_factor * (np.sum(x) + np.sum(y))
+
+    if as_prob:
+        x = x / n_total
+        y = y / n_total
+        xy = xy / n_total
+        n_total = None
+
+    with pytest.raises(ValueError):
+        tokenseq.ppmi(x, y, xy, n_total=n_total, alpha=0.75)
+    with pytest.raises(ValueError):
+        tokenseq.ppmi(x, y, xy, n_total=n_total, add_k_smoothing=1.5)
+
+    res = tokenseq.ppmi(x, y, xy, n_total=n_total)
     assert isinstance(res, np.ndarray)
-    assert len(res) == len(xy)
+    assert len(res) == len(x)
+
+    if np.all(x > 0) and np.all(y > 0):
+        assert np.sum(np.isnan(res)) == 0
+        assert np.all(res >= 0)
+
+
+@given(xy=strategy_2d_array(int, 0, 100, min_side=2, max_side=100),
+       as_prob=st.booleans(),
+       as_sparse=st.sampled_from([None, 'csc', 'csr']),
+       alpha=st.one_of(st.just(1.0), st.floats(min_value=0.1, max_value=2.0)),
+       add_k_smoothing=st.one_of(st.just(0.0), st.floats(min_value=0.1, max_value=2.0)))
+def test_ppmi_matrix_hypothesis(xy, as_prob, as_sparse, alpha, add_k_smoothing):
+    if as_prob:
+        if np.sum(xy) > 0:
+            xy = xy / np.sum(xy)
+        else:
+            xy = xy.astype('float')
+
+    xy_dense = None
+    if as_sparse:
+        xy_dense = xy
+        xy = sparse.coo_matrix(xy).asformat(as_sparse)
+
+    kwargs = dict(add_k_smoothing=add_k_smoothing, alpha=alpha)
+
+    if as_prob and add_k_smoothing != 0.0:
+        with pytest.raises(ValueError):
+            tokenseq.ppmi(xy, **kwargs)
+    else:
+        if as_prob and not np.isclose(np.sum(xy), 1.0):
+            with pytest.raises(ValueError):
+                tokenseq.ppmi(xy, **kwargs)
+        elif as_prob and (alpha != 1.0 or add_k_smoothing != 0.0):
+            with pytest.raises(ValueError):
+                tokenseq.ppmi(xy, **kwargs)
+        elif not as_prob and np.sum(xy) == 0 and add_k_smoothing == 0.0:
+            with pytest.raises(ValueError):
+                tokenseq.ppmi(xy, **kwargs)
+        else:
+            res = tokenseq.ppmi(xy, **kwargs)
+            if as_sparse and add_k_smoothing == 0.0:
+                assert isinstance(res, sparse.spmatrix)
+                res_dense = res.A
+            else:
+                assert isinstance(res, np.ndarray)
+                res_dense = res
+            assert res.shape == xy.shape
+
+            if np.sum(np.isnan(res_dense)) == 0:
+                assert np.all(res_dense >= 0)
+
+            if as_sparse and add_k_smoothing == 0.0:
+                res_dense2 = tokenseq.ppmi(xy_dense, **kwargs)
+                if np.sum(np.isnan(res_dense2)) == 0:
+                    assert np.allclose(res_dense, res_dense2)
 
 
 @pytest.mark.parametrize('args, expected', [
     (
         {},
-        [(('e', 'f'), 0.8105361810656604),
-         (('b', 'c'), 0.6915604067044995),
-         (('d', 'e'), 0.6122380649615099),
-         (('a', 'b'), 0.43193903282626694),
-         (('c', 'd'), 0.43193903282626694),
-         (('c', 'e'), 0.3823761795182354),
-         (('f', 'b'), 0.18728849070804096),
-         (('c', 'b'), 0.14367999690515007),
-         (('e', 'b'), 0.044177097787776946)]
+        [(('e', 'f'), 1.6094379124341005),
+         (('d', 'e'), 1.6094379124341),
+         (('b', 'c'), 1.3217558399823195),
+         (('a', 'b'), 1.09861228866811),
+         (('f', 'b'), 1.09861228866811),
+         (('c', 'd'), 1.0986122886681096),
+         (('c', 'e'), 0.6931471805599454),
+         (('c', 'b'), 0.18232155679395445),
+         (('e', 'b'), 0.0)]
     ),
     (
         dict(min_count=2),
-        [(('e', 'f'), 0.8105361810656604),
-         (('b', 'c'), 0.6915604067044995),
-         (('c', 'e'), 0.3823761795182354),
-         (('c', 'b'), 0.14367999690515007)]
+        [(('e', 'f'), 1.6094379124341003),
+         (('b', 'c'), 0.916290731874155),
+         (('c', 'b'), 0.9162907318741549),
+         (('c', 'e'), 0.9162907318741549)]
     ),
     (
         dict(threshold=0.5),
-        [(('e', 'f'), 0.8105361810656604),
-         (('b', 'c'), 0.6915604067044995),
-         (('d', 'e'), 0.6122380649615099)]
+        [(('e', 'f'), 1.6094379124341005),
+         (('d', 'e'), 1.6094379124341),
+         (('b', 'c'), 1.3217558399823195),
+         (('a', 'b'), 1.09861228866811),
+         (('f', 'b'), 1.09861228866811),
+         (('c', 'd'), 1.0986122886681096),
+         (('c', 'e'), 0.6931471805599454)]
     ),
     (
         dict(min_count=2, threshold=0.5, glue='_&_'),
-        [('e_&_f', 0.8105361810656604),
-         ('b_&_c', 0.6915604067044995)]
+        [('e_&_f', 1.6094379124341003),
+         ('b_&_c', 0.916290731874155),
+         ('c_&_b', 0.9162907318741549),
+         ('c_&_e', 0.9162907318741549)]
     ),
     (
-        dict(min_count=2, statistic=tokenseq.pmi),
-        [(('e', 'f'), 1.7346010553881064),
-         (('b', 'c'), 1.000631880307906),
-         (('c', 'e'), 0.8183103235139513),
-         (('c', 'b'), 0.30748469974796055)]
+        dict(min_count=2, statistic=tokenseq.npmi),
+        [(('b', 'c'), 1.0),
+         (('e', 'f'), 1.0),
+         (('c', 'b'), 0.5693234419266069),
+         (('c', 'e'), 0.5693234419266069)]
     ),
     (
         dict(min_count=2, statistic=tokenseq.pmi2),
-        [(('e', 'f'), -0.4054651081081644),
-         (('b', 'c'), -0.4462871026284194),
-         (('c', 'e'), -1.3217558399823195),
-         (('c', 'b'), -1.8325814637483102)]
+        [(('b', 'c'), 0.0),
+         (('e', 'f'), 0.0),
+         (('c', 'b'), -0.6931471805599454),
+         (('c', 'e'), -0.6931471805599454)]
     ),
     (
         dict(min_count=2, statistic=tokenseq.pmi3),
-        [(('b', 'c'), -1.8932060855647448),
-         (('e', 'f'), -2.5455312716044354),
-         (('c', 'e'), -3.4618220034785905),
-         (('c', 'b'), -3.972647627244581)]
+        [(('b', 'c'), -0.916290731874155),
+         (('e', 'f'), -1.6094379124341003),
+         (('c', 'b'), -2.302585092994046),
+         (('c', 'e'), -2.302585092994046)]
     )
 ])
 def test_token_collocations(args, expected):
-    sentences = tokens = ['a b c d e f b c b'.split(),
-                          'c e b c b c e f'.split()]
+    sentences = ['a b c d e f b c b'.split(),
+                 'c e b c b c e f'.split()]
     res = tokenseq.token_collocations(sentences, **args)
     colloc, stat = zip(*res)
     expected_colloc, expected_stat = zip(*expected)
@@ -373,13 +479,12 @@ def test_token_collocations(args, expected):
        min_count=st.integers(),
        pass_embed_tokens=st.integers(min_value=0, max_value=3),
        statistic=st.sampled_from([tokenseq.pmi, tokenseq.npmi, tokenseq.pmi2, tokenseq.pmi3,
-                                  tokenseq.simple_collocation_counts]),
-       pass_vocab_counts=st.booleans(),
+                                  tokenseq.ppmi, identity]),
        glue=st.one_of(st.none(), st.text(string.printable)),
        return_statistic=st.booleans(),
        rank=st.sampled_from([None, 'asc', 'desc'])
        )
-def test_token_collocations_hypothesis(sentences, threshold, min_count, pass_embed_tokens, statistic, pass_vocab_counts,
+def test_token_collocations_hypothesis(sentences, threshold, min_count, pass_embed_tokens, statistic,
                                        glue, return_statistic, rank):
     ngramsize = 2
     tok = flatten_list(sentences)
@@ -389,14 +494,8 @@ def test_token_collocations_hypothesis(sentences, threshold, min_count, pass_emb
     else:
         embed_tokens = None
 
-    if pass_vocab_counts:
-        vocab_counts = Counter(tok)
-    else:
-        vocab_counts = None
-
     args = dict(sentences=sentences, threshold=threshold, min_count=min_count, embed_tokens=embed_tokens,
-                statistic=statistic, vocab_counts=vocab_counts, glue=glue,
-                return_statistic=return_statistic, rank=rank)
+                statistic=statistic, glue=glue, return_statistic=return_statistic, rank=rank)
 
     if min_count < 0:
         with pytest.raises(ValueError):
@@ -415,7 +514,7 @@ def test_token_collocations_hypothesis(sentences, threshold, min_count, pass_emb
                 assert isinstance(stat, float)
                 if threshold:
                     assert stat >= threshold
-                if statistic is tokenseq.simple_collocation_counts:
+                if statistic is identity:
                     assert stat >= min_count
                 if rank:
                     statvalues.append(stat)
@@ -470,8 +569,9 @@ def test_token_match(pattern, tokens, match_type, ignore_case, glob_method, expe
     (['A', 'A'], ['a', 'b', 'c'], 'exact', True, 'match', [True, False, False])
 ])
 def test_token_match_multi_pattern(pattern, tokens, match_type, ignore_case, glob_method, expected):
-    assert np.array_equal(tokenseq.token_match_multi_pattern(pattern, tokens, match_type, ignore_case, glob_method),
-                          np.array(expected))
+    assert np.array_equal(
+        tokenseq.token_match_multi_pattern(pattern, tokens, match_type, ignore_case, glob_method),
+        np.array(expected))
 
 
 def test_token_match_subsequent():
@@ -629,33 +729,3 @@ def test_token_ngrams_hypothesis(tokens, n, join, join_str, ngram_container, pas
                             tokens_.extend(g[n-1:])
 
                     assert tokens_ == tokens
-
-
-@pytest.mark.parametrize('numbertoken, char, firstchar, below_one, drop_sign, expected', [
-    ('', '0', '0', '0', True, ''),
-    ('no number', '0', '0', '0', True, ''),
-    ('0', '0', '0', '0', True, '0'),
-    ('0.9', '0', '0', '0', True, '0'),
-    ('0.1', '0', '0', '', True, ''),
-    ('0.01', '0', '0', '0', True, '0'),
-    ('-0.01', '0', '0', 'X', True, 'X'),
-    ('1', '0', '0', '0', True, '0'),
-    ('1', '0', '1', '0', True, '1'),
-    ('10', '0', '0', '0', True, '00'),
-    ('10', '0', '1', '0', True, '10'),
-    ('123456', '0', '0', '0', True, '000000'),
-    ('123456', '0', '1', '0', True, '100000'),
-    ('123456', 'N', 'X', '0', True, 'XNNNNN'),
-    ('123.456', '0', '0', '0', True, '000'),
-    ('-123.456', '0', '0', '0', True, '000'),
-    ('-123.456', '0', '0', '0', False, '-000'),
-    ('-123.456', '0', '1', '0', False, '-100'),
-    ('-0.0123', '0', '1', '0', False, '-0'),
-    ('-1.0123', '0', '1', '0', False, '-1'),
-    ('180,000', '0', '1', '0', False, '100000'),
-    ('180,000.99', '0', '1', '0', False, '100000'),
-])
-def test_numbertoken_to_magnitude(numbertoken, char, firstchar, below_one, drop_sign, expected):
-    res = tokenseq.numbertoken_to_magnitude(numbertoken, char=char, firstchar=firstchar,
-                                            below_one=below_one, drop_sign=drop_sign)
-    assert res == expected
