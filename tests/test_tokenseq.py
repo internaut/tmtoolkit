@@ -405,6 +405,67 @@ def test_ppmi_matrix_hypothesis(xy, as_prob, as_sparse, alpha, add_k_smoothing):
                     assert np.allclose(res_dense, res_dense2)
 
 
+@given(sentences=strategy_lists_of_tokens(string.printable),
+       min_count=st.integers(),
+       pass_embed_tokens=st.integers(min_value=0, max_value=3),
+       tokens_as_hashes=st.booleans(),
+       return_vocab=st.booleans(),
+       return_bigrams_with_indices=st.booleans()
+       )
+def test_token_collocation_matrix_hypothesis(sentences, min_count, pass_embed_tokens, tokens_as_hashes,
+                                             return_vocab, return_bigrams_with_indices):
+    if tokens_as_hashes:
+        sentences = [list(map(hash, sent)) for sent in sentences]
+    tok = flatten_list(sentences)
+
+    if pass_embed_tokens > 0:
+        embed_tokens = random.choices(tok, k=min(pass_embed_tokens, len(tok)))
+    else:
+        embed_tokens = None
+
+    args = dict(sentences=sentences, min_count=min_count, embed_tokens=embed_tokens, tokens_as_hashes=tokens_as_hashes,
+                return_vocab=return_vocab, return_bigrams_with_indices=return_bigrams_with_indices)
+
+    if min_count < 0:
+        with pytest.raises(ValueError):
+            tokenseq.token_collocation_matrix(**args)
+    else:
+        res = tokenseq.token_collocation_matrix(**args)
+        vocab1 = vocab2 = bigrams_w_indices = None
+
+        if return_vocab:
+            assert isinstance(res, tuple)
+            assert len(res) == 3
+            mat, vocab1, vocab2 = res
+        elif return_bigrams_with_indices:
+            assert isinstance(res, tuple)
+            assert len(res) == 2
+            mat, bigrams_w_indices = res
+        else:
+            mat = res
+
+        assert isinstance(mat, sparse.csr_matrix)
+        assert np.issubdtype(mat.dtype, 'uint32')
+
+        if len(tok) < 2:
+            assert mat.nnz == 0
+        elif not embed_tokens and min_count == 0:
+            assert mat.nnz > 0
+
+        assert mat.shape[0] > 0
+        assert mat.shape[1] > 0
+
+        if mat.nnz > 0 and min_count == 0:
+            if return_vocab:
+                assert mat.shape == (len(vocab1), len(vocab2))
+
+            if return_bigrams_with_indices:
+                assert len(bigrams_w_indices) == 2
+                bigrams, bigram_ind = bigrams_w_indices
+                assert len(bigrams) == len(bigram_ind)
+                assert np.prod(mat.shape) == len(bigrams)
+
+
 @pytest.mark.parametrize('args, expected', [
     (
         {},

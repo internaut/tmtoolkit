@@ -150,6 +150,84 @@ def token_hash_convert(tokens: Union[Iterable[Union[str, int]], np.ndarray],
         return collapse_tokens(conv, collapse=collapse)
 
 
+def token_collocation_matrix(sentences: List[List[StrOrInt]], min_count: int = 1,
+                             embed_tokens: Optional[Iterable] = None, tokens_as_hashes: bool = False,
+                             return_vocab: bool = False, return_bigrams_with_indices: bool = False) \
+        -> Union[sparse.csr_matrix,
+                 Tuple[sparse.csr_matrix, np.ndarray, np.ndarray],
+                 Tuple[sparse.csr_matrix, List[Tuple, Tuple[int, int]]]]:
+    """
+    Generate a sparse token collocation matrix from bigrams in `sentences`.
+
+    .. seealso:: See :func:`~token_collocations` for a similar function that returns a list of collocations sorted by
+                 a statistic score such as PPMI.
+
+    :param sentences: list of sentences containing lists of tokens; tokens can be items of any type if `glue` is None
+    :param min_count: ignore collocations with number of occurrences below this threshold
+    :param embed_tokens: tokens that, if occurring inside an n-gram, are not counted; see :func:`token_ngrams`
+    :param tokens_as_hashes: if True, return token type hashes (integers) instead of textual representations (strings)
+    :param return_vocab: additionally return the vocabulary as numpy array for each axis of the matrix
+    :param return_bigrams_with_indices: additionally return a list of bigrams together a pair of indices of the
+                                        respective bigram into the result matrix
+    :return: a sparse collocation count matrix where the rows and columns represent bigram token pairs and the elements
+             represent their collocation count; if `return_vocab` is True, also return the vocabulary for each matrix
+             axis; if `return_bigrams_with_indices` is True, additionally return a list of bigrams together a pair of
+             indices of the respective bigram into the result matrix
+    """
+    if min_count < 0:
+        raise ValueError('`min_count` must be non-negative')
+
+    n_tok = sum(len(sent) for sent in sentences)
+
+    vocab_dtype = 'uint64' if tokens_as_hashes else 'str'
+    empty_mat = sparse.csr_matrix([], dtype='uint32', shape=(1, 1))
+
+    if return_vocab:
+        empty_res = (empty_mat, np.array([], dtype=vocab_dtype), np.array([], dtype=vocab_dtype))
+    elif return_bigrams_with_indices:
+        empty_res = (empty_mat, [])
+    else:
+        empty_res = empty_mat
+
+    if n_tok < 2:       # can't possibly have any collocations with fewer than 2 tokens
+        return empty_res
+
+    # count bigram occurrences
+    ngramsize = 2
+    bigrams = Counter()
+    for sent_tokens in sentences:
+        if len(sent_tokens) >= ngramsize:
+            bigrams.update(map(tuple, token_ngrams(sent_tokens, n=ngramsize, join=False, embed_tokens=embed_tokens,
+                                                   keep_embed_tokens=False)))
+
+    if min_count:
+        bigrams = {bg: n for bg, n in bigrams.items() if n >= min_count}
+
+    if not bigrams:    # no bigrams generated (input only consisted of empty string tokens or all below `min_count`)
+        return empty_res
+
+    # split bigrams into tuples of first and second tokens
+    bg_split = tuple(zip(*bigrams.keys()))
+    # produce a sorted tuples of unique tokens per bigram "side"
+    bg_vocab_split = tuple(map(sorted, map(set, bg_split)))
+
+    # turn these tuples into numpy arrays
+    bg_first, bg_second = map(lambda x: np.array(x, dtype=vocab_dtype), bg_split)
+    bg_vocab_first, bg_vocab_second = map(lambda x: np.array(x, dtype=vocab_dtype), bg_vocab_split)
+
+    # create a sparse collocation matrix
+    row_ind = indices_of_matches(bg_first, bg_vocab_first, b_is_sorted=True, check_a_in_b=True)
+    col_ind = indices_of_matches(bg_second, bg_vocab_second, b_is_sorted=True, check_a_in_b=True)
+    mat = sparse.coo_matrix((tuple(bigrams.values()), (row_ind, col_ind)), dtype='uint32').tocsr()
+
+    if return_vocab:
+        return mat, bg_vocab_first, bg_vocab_second
+    elif return_bigrams_with_indices:
+        return mat, list(zip(bigrams, zip(row_ind, col_ind)))
+    else:
+        return mat
+
+
 def token_collocations(sentences: List[List[StrOrInt]], threshold: Optional[float] = None,
                        min_count: int = 1, embed_tokens: Optional[Iterable] = None,
                        statistic: Callable[[sparse.spmatrix, ...], Union[sparse.spmatrix, np.ndarray]] = ppmi,
@@ -188,45 +266,15 @@ def token_collocations(sentences: List[List[StrOrInt]], threshold: Optional[floa
     # (see https://en.wikipedia.org/wiki/Collocation#Statistically_significant_collocation);
     # this requires an additional threshold comparison relation argument
 
-    if min_count < 0:
-        raise ValueError('`min_count` must be non-negative')
+    mat, bigrams_w_indices = token_collocation_matrix(sentences, min_count=min_count, embed_tokens=embed_tokens,
+                                                      tokens_as_hashes=tokens_as_hashes,
+                                                      return_bigrams_with_indices=True)
 
-    n_tok = sum(len(sent) for sent in sentences)
-
-    if n_tok < 2:       # can't possibly have any collocations with fewer than 2 tokens
+    if mat.nnz == 0:  # empty matrix
         return []
-
-    # count bigram occurrences
-    ngramsize = 2
-    bigrams = Counter()
-    for sent_tokens in sentences:
-        if len(sent_tokens) >= ngramsize:
-            bigrams.update(map(tuple, token_ngrams(sent_tokens, n=ngramsize, join=False, embed_tokens=embed_tokens,
-                                                   keep_embed_tokens=False)))
-
-    if min_count:
-        bigrams = {bg: n for bg, n in bigrams.items() if n >= min_count}
-
-    if not bigrams:    # no bigrams generated (input only consisted of empty string tokens or all below `min_count`)
-        return []
-
-    # split bigrams into tuples of first and second tokens
-    bg_split = tuple(zip(*bigrams.keys()))
-    # produce a sorted tuples of unique tokens per bigram "side"
-    bg_vocab_split = tuple(map(sorted, map(set, bg_split)))
-
-    # turn these tuples into numpy arrays
-    dtype = 'uint64' if tokens_as_hashes else 'str'
-    bg_first, bg_second = map(lambda x: np.array(x, dtype=dtype), bg_split)
-    bg_vocab_first, bg_vocab_second = map(lambda x: np.array(x, dtype=dtype), bg_vocab_split)
-
-    # create a sparse collocation matrix
-    row_ind = indices_of_matches(bg_first, bg_vocab_first, b_is_sorted=True, check_a_in_b=True)
-    col_ind = indices_of_matches(bg_second, bg_vocab_second, b_is_sorted=True, check_a_in_b=True)
-    mat = sparse.coo_matrix((tuple(bigrams.values()), (row_ind, col_ind)), dtype='uint32')
 
     # apply scoring function
-    scores = statistic(mat.tocsr(), **statistic_kwargs)
+    scores = statistic(mat, **statistic_kwargs)
     assert scores.shape == mat.shape, "returned matrix' shape from statistic function must match collocation matrix " \
                                       "shape"
     if isinstance(scores, sparse.spmatrix):
@@ -234,7 +282,7 @@ def token_collocations(sentences: List[List[StrOrInt]], threshold: Optional[floa
 
     # build result
     res = []
-    for bg, (i, j) in zip(bigrams, zip(row_ind, col_ind)):
+    for bg, (i, j) in bigrams_w_indices:
         s = scores[i, j]
         if hashes2tokens is None:
             bg = tuple(bg)
