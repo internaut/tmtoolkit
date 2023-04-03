@@ -7,6 +7,7 @@ Feb. 2023
 
 import pandas as pd
 from tmtoolkit import corpus as c
+from tmtoolkit.tokenseq import ppmi
 from tmtoolkit.utils import pairwise_max_table
 
 pd.set_option('display.width', 140)
@@ -42,11 +43,18 @@ print()
 
 print('generating cooccurrence matrix for whole corpus')
 
-cooc_table = c.token_cooccurrence(corp, context_size=5, as_table=True)
-pairs_table = pairwise_max_table(cooc_table)
+cooc_mat, cooc_tokens = c.token_cooccurrence(corp, context_size=5, return_tokens=True)
+pairs_table = pairwise_max_table(cooc_mat, labels=cooc_tokens)
 
 print('top pairs for whole corpus:')
 print(pairs_table)
+
+#%%
+
+print('applying PPMI')
+
+print('top pairs for whole corpus by PPMI:')
+pairwise_max_table(ppmi(cooc_mat), labels=cooc_tokens)
 
 #%%
 
