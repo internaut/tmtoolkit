@@ -125,6 +125,7 @@ Currently tmtoolkit comes with the following built-in datasets which can be load
    - *"es-parlspeech-v2-sample-congreso"*
    - *"nl-parlspeech-v2-sample-tweedekamer"*
 
+- *"en-healthtweets"*: `Health News in Twitter Data Set <https://archive.ics.uci.edu/ml/datasets/Health+News+in+Twitter>`_
 
 About this documentation
 ------------------------

@@ -863,7 +863,7 @@ if find_spec('rpy2') is not None:
             args['x'] = robjects.FloatVector(s.data)
 
         return r_matrix.sparseMatrix(**args,
-                                     dims=list(s.shape),
+                                     dims=robjects.IntVector(s.shape),
                                      dimnames=[rownames or [], colnames or []])
 
 

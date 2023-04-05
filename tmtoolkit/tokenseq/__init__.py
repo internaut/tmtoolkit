@@ -13,7 +13,7 @@ import itertools
 import re
 from collections import Counter
 from copy import copy
-from typing import Union, Tuple, List, Iterable, Set, Optional, Callable, Mapping, Dict, Any, Sequence
+from typing import Union, Tuple, List, Iterable, Set, Optional, Callable, Dict, Any, Sequence
 
 import globre
 import numpy as np

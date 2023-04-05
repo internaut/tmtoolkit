@@ -66,6 +66,10 @@ class Corpus:
             'text_column': 'text',
             'prepend_columns': ['title', 'subtitle']
         },
+        'en-healthtweets': {
+            'id_column': 'source_id',
+            'text_column': 'text'
+        },
         'de-parlspeech-v2-sample-bundestag': {
             'id_column': 'parlspeech_row',
             'text_column': 'text',
