@@ -71,4 +71,10 @@ output_file = os.path.join(ROOT_PATH, 'tmp', 'health_tweets.csv')
 print(f'writing output to {output_file}')
 df.to_csv(output_file, index=False)
 
+df['source_id'] = df.source.str.cat(df.id, sep='-')
+
+output_file = os.path.join(ROOT_PATH, 'tmp', 'health_tweets_no_date.csv')
+print(f'writing output to {output_file}')
+df.loc[:, ['source_id', 'text']].to_csv(output_file, index=False)
+
 print('done.')
