@@ -4,11 +4,11 @@ tmtoolkit: Text mining and topic modeling toolkit
 |pypi| |pypi_downloads| |rtd| |runtests| |coverage| |zenodo|
 
 *tmtoolkit* is a set of tools for text mining and topic modeling with Python developed especially for the use in the
-social sciences, in journalism or related disciplines. It aims for easy installation, extensive documentation
+social sciences, linguistics, journalism or related disciplines. It aims for easy installation, extensive documentation
 and a clear programming interface while offering good performance on large datasets by the means of vectorized
 operations (via NumPy) and parallel computation (using Python's *multiprocessing* module and the
 `loky <https://loky.readthedocs.io/>`_ package). The basis of tmtoolkit's text mining capabilities are built around
-`SpaCy <https://spacy.io/>`_, which offers a `many language models <https://spacy.io/models>`_.
+`SpaCy <https://spacy.io/>`_, which offers `many language models <https://spacy.io/models>`_.
 
 The documentation for tmtoolkit is available on `tmtoolkit.readthedocs.org <https://tmtoolkit.readthedocs.org>`_ and
 the GitHub code repository is on

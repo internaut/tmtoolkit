@@ -2870,9 +2870,8 @@ def test_join_collocations_by_patterns(corpora_en_serial_and_parallel, testcase,
 def test_join_collocations_by_statistic_hypothesis(corpora_en_serial_and_parallel_module, threshold, glue, min_count,
                                                    embed_tokens_min_docfreq, pass_embed_tokens, test_w_tokenattr,
                                                    return_joint_tokens):
-    # restricting statistic to simple counts, otherwise the test takes too long
     args = dict(threshold=threshold, min_count=min_count, embed_tokens_min_docfreq=embed_tokens_min_docfreq,
-                glue=glue)
+                glue=glue, statistic=lambda x: x)
 
     for corp in corpora_en_serial_and_parallel_module:
         if pass_embed_tokens > 0:

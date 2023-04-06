@@ -22,7 +22,7 @@ DEPS_BASE = ['numpy>=1.22.0,<2.0', 'scipy>=1.7.0,<2.0', 'globre>=0.1.5,<0.2',
              'matplotlib>=3.5.0,<4.0', 'bidict>=0.21.0,<1.0', 'wheel']
 
 DEPS_EXTRA = {
-    'textproc': ['spacy>=3.2.0,<3.3', 'loky>=3.0.0,<4.0'],
+    'textproc': ['spacy>=3.5.0,<3.6', 'loky>=3.0.0,<4.0'],
     'textproc_extra': ['PyICU>=2.8,<3.0', 'nltk>=3.6.0,<3.7'],
     'wordclouds': ['wordcloud>=1.8.0,<1.9', 'Pillow>=9.0.0,<10.0.0'],
     'lda': ['lda>=2.0,<3.0'],
