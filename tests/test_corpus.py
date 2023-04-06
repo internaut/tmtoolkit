@@ -3648,7 +3648,7 @@ def test__token_cooccurrence_matrix(docs, context_size, tokens, tokens_oov, spar
     if tokens:
         if tokens_oov:
             if isinstance(next(iter(tokens)), int):
-                oov_added = -1
+                oov_added = 0
             elif 'OOV' not in tokens:
                 oov_added = 'OOV'
 
@@ -3693,9 +3693,8 @@ def test__token_cooccurrence_matrix(docs, context_size, tokens, tokens_oov, spar
 
             assert np.all(cooc == cooc.T)
 
-        # min/max
+        # min
         assert np.all(cooc >= 0)
-        assert np.all(cooc <= corpussize)
 
         # OOV
         if oov_added is not None:

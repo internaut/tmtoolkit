@@ -82,7 +82,7 @@ The ``Makefile`` in the root folder contains targets for generating a Python *Wh
 Built-in datasets
 -----------------
 
-All built-in datasets reside in ``tmtoolkit/data/<LANGUAGE_CODE>``, where ``LANGUAGE_CODE`` is an ISO language code. For the `ParlSpeech V2 <https://doi.org/10.7910/DVN/L4OAKN>`_ datasets, the samples are generated via the R script ``scripts/prepare_corpora.R``. The `News Articles <https://doi.org/10.7910/DVN/GMFCTR>`_ dataset is used without further processing.
+All built-in datasets reside in ``tmtoolkit/data/<LANGUAGE_CODE>``, where ``LANGUAGE_CODE`` is an ISO language code. For the `ParlSpeech V2 <https://doi.org/10.7910/DVN/L4OAKN>`_ datasets, the samples are generated via the R script ``scripts/prepare_corpora.R``. For the `Health News in Twitter Data Set <https://archive.ics.uci.edu/ml/datasets/Health+News+in+Twitter>`_, the data conversion is done in ``scripts/health_tweets_data.py``. The `News Articles <https://doi.org/10.7910/DVN/GMFCTR>`_ dataset is used without further processing.
 
 
 Automated testing

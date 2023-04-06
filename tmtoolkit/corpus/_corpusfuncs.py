@@ -4146,6 +4146,10 @@ def _token_cooccurrence_matrix(docs: Sequence[Union[List[StrOrInt], np.ndarray]]
 
     as_hashes = (isinstance(tokens, np.ndarray) and np.issubdtype(tokens.dtype, 'uint64')) or \
                 isinstance(next(iter(tokens)), int)
+
+    if as_hashes:
+        tokens = np.array(np.maximum(tokens, 0), dtype='uint64')
+
     input_dtype = 'uint64' if as_hashes else 'str'
 
     if as_hashes:
