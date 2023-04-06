@@ -5,7 +5,11 @@ from collections import Counter
 import pytest
 from hypothesis import given, strategies as st
 
-from tmtoolkit.corpus import Corpus, vocabulary
+try:
+    from tmtoolkit.corpus import Corpus, vocabulary
+except ImportError:
+    pytest.skip("skipping tmtoolkit.corpus tests (required packages not installed)", allow_module_level=True)
+
 from tmtoolkit.ngrammodels import NGramModel
 from tmtoolkit.strings import OOV, SENT_START, SENT_END, SPECIAL_TOKENS
 from ._testtextdata import textdata_sm

@@ -21,12 +21,12 @@ import pandas as pd
 import pytest
 from hypothesis import given, strategies as st, settings
 from scipy import sparse
-from spacy.strings import hash_string
 
 if any(find_spec(pkg) is None for pkg in ('spacy', 'bidict', 'loky')):
     pytest.skip("skipping tmtoolkit.corpus tests (required packages not installed)", allow_module_level=True)
 
 import spacy
+from spacy.strings import hash_string
 from spacy.tokens import Doc
 from spacy.util import get_installed_models
 from scipy.sparse import csr_matrix
