@@ -664,20 +664,29 @@ def index_windows_around_matches(matches: np.ndarray, left: int, right: int,
     .. code-block:: text
 
         input:
-        #   0      1      2      3     4      5      6      7     8
+        #   0     1      2      3     4      5      6      7     8
         [True, True, False, False, True, False, False, False, True]
         output (matches *highlighted*):
-        [[0, *1*], [0, *1*, 2], [3, *4*, 5], [7, *8*]]
+        [[*0*, 1], [0, *1*, 2], [3, *4*, 5], [7, *8*]]
 
     Example with ``left=1 and right=1, flatten=True, remove_overlaps=True``:
 
     .. code-block:: text
 
         input:
-        #   0      1      2      3     4      5      6      7     8
+        #   0     1      2      3     4      5      6      7     8
         [True, True, False, False, True, False, False, False, True]
         output (matches *highlighted*, other values belong to the respective "windows"):
         [*0*, *1*, 2, 3, *4*, 5, 7, *8*]
+
+    :param matches: 1D boolean input array
+    :param left: index window left side size
+    :param right: index window right side size
+    :param  flatten: if True return flattened NumPy 1D array, otherwise return list of NumPy arrays with one array per
+                     window
+    :param remove_overlaps: if True, remove overlaps in match windows (only applies if `flatten` is set to True)
+    :return: if `flatten` is False, return a list of arrays where each array is an index window into `matches`; if
+             `flatten` is True, return a concatenated NumPy array with the index windows
     """
     if not isinstance(matches, np.ndarray) or matches.dtype != bool:
         raise ValueError('`matches` must be a boolean NumPy array')

@@ -37,11 +37,26 @@ Functions to visualize corpus summary statistics
     :members:
 
 
+tmtoolkit.ngrammodels
+---------------------
+
+.. automodule:: tmtoolkit.ngrammodels
+    :members:
+
+
+tmtoolkit.strings
+-----------------
+
+.. automodule:: tmtoolkit.strings
+    :members:
+
+
 tmtoolkit.tokenseq
 ------------------
 
 .. automodule:: tmtoolkit.tokenseq
     :members:
+    :imported-members:
 
 
 tmtoolkit.topicmod
