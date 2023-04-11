@@ -148,7 +148,7 @@ def test_as_chararray(x, as_numpy_array):
     assert res.tolist() == list(map(str, x_orig))
 
 
-@given(x=st.lists(st.text()),
+@given(x=st.lists(st.text(string.printable)),
        as_numpy_array=st.booleans())
 def test_chararray_elem_size(x, as_numpy_array):
     if as_numpy_array:

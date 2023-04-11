@@ -5,6 +5,7 @@ tmtoolkit setuptools based setup module
 """
 
 import os
+import sys
 from codecs import open
 
 from setuptools import setup, find_packages
@@ -22,14 +23,14 @@ DEPS_BASE = ['numpy>=1.23.0,<2.0', 'scipy>=1.7.0,<2.0', 'globre>=0.1.5,<0.2',
              'matplotlib>=3.5.0,<4.0', 'bidict>=0.21.0,<1.0', 'wheel>=0.40,<1.0']
 
 DEPS_EXTRA = {
-    'textproc': ['spacy>=3.3.0,<3.6', 'loky>=3.0.0,<4.0'],
+    'textproc': ['spacy>=3.3.0,<4.0', 'loky>=3.0.0,<4.0'],
     'textproc_extra': ['PyICU>=2.8,<3.0', 'nltk>=3.6.0,<3.9'],
-    'wordclouds': ['wordcloud>=1.8.0,<1.9', 'Pillow>=9.0.0,<10.0.0'],
+    'wordclouds': ['wordcloud>=1.8.0,<2.0', 'Pillow>=9.0.0,<10.0.0'],
     'lda': ['lda>=2.0,<3.0'],
     'sklearn': ['scikit-learn>=1.0.0,<2.0'],
     'gensim': ['gensim>=4.1.0,<5.0'],
     'topic_modeling_eval_extra': ['gmpy2>=2.1.0,<3.0'],
-    'rinterop': ['rpy2>=3.5.0,<3.6'],
+    'rinterop': ['rpy2>=3.5.0,<4.0'],
     'test': ['pytest>=7.2.0,<8.0', 'hypothesis>=6.49.0,<7.0'],
     'doc': ['Sphinx>=6.1.0,<7.0', 'sphinx-rtd-theme>=1.2.0', 'nbsphinx>=0.9.0,<1.0'],
     'dev': ['coverage>=7.2,<8.0', 'coverage-badge>=1.1.0', 'pytest-cov>=4.0.0,<5.0', 'twine>=4.0',
@@ -38,6 +39,12 @@ DEPS_EXTRA = {
 
 # DEPS_EXTRA['minimal'] = DEPS_BASE   # doesn't work with extras_require and pip currently
 # see https://github.com/pypa/setuptools/issues/1139
+
+if sys.version_info >= (3, 11):
+    print('warning: packages "wordcloud" and "lda" are not available for Python 3.11 and above at the moment',
+          file=sys.stderr)
+    DEPS_EXTRA['wordclouds'] = []
+    DEPS_EXTRA['lda'] = []
 
 DEPS_EXTRA['recommended'] = DEPS_EXTRA['textproc'] + DEPS_EXTRA['wordclouds']
 DEPS_EXTRA['all'] = []
