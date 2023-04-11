@@ -16,6 +16,10 @@ from tmtoolkit.utils import flatten_list
 
 
 class NGramModel:
+    """
+    An N-gram model.
+    """
+
     def __init__(self, n: int, add_k_smoothing: float = 1.0, keep_vocab: Optional[Union[int, float]] = None,
                  tokens_as_hashes: bool = True):
         """

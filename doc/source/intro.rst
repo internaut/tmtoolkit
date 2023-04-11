@@ -60,7 +60,8 @@ The tmtoolkit package offers several text preprocessing and text mining methods,
 - calculating and `visualizing corpus summary statistics <preprocessing.ipynb#Visualizing-corpus-summary-statistics>`_
 - finding out and joining `collocations <preprocessing.ipynb#Identifying-and-joining-token-collocations>`_
 - `splitting and sampling corpora <text_corpora.ipynb#Corpus-functions-for-document-management>`_
-- generating `n-grams <preprocessing.ipynb#Generating-n-grams>`_
+- generating `n-grams <preprocessing.ipynb#Generating-n-grams>`_ and using
+  `N-gram models <api.rst#module-tmtoolkit.ngrammodels>`_
 - generating `sparse document-term matrices <preprocessing.ipynb#Generating-a-sparse-document-term-matrix-(DTM)>`_
 
 Wherever possible and useful, these methods can operate in parallel to speed up computations with large datasets.
@@ -104,6 +105,7 @@ Other features
   `text files, tabular files (CSV or Excel), ZIP files or folders <text_corpora.ipynb#Loading-text-data>`_
 - `splitting and joining documents <text_corpora.ipynb#Corpus-functions-for-document-management>`_
 - `common statistics and transformations for document-term matrices <bow.ipynb>`_ like word cooccurrence and *tf-idf*
+- `interoperability with R <rinterop.ipynb>`_
 
 
 Limits

@@ -14,19 +14,14 @@ The documentation for tmtoolkit is available on `tmtoolkit.readthedocs.org <http
 the GitHub code repository is on
 `github.com/WZBSocialScienceCenter/tmtoolkit <https://github.com/WZBSocialScienceCenter/tmtoolkit>`_.
 
-**Upgrade note:**
-
-Since Feb 8 2022, the newest version 0.11.0 of tmtoolkit is available on PyPI. This version features a new API
-for text processing and mining which is incompatible with prior versions. It's advisable to first read the
-first three chapters of the `tutorial <https://tmtoolkit.readthedocs.io/en/latest/getting_started.html>`_
-to get used to the new API. You should also re-install tmtoolkit in a new virtual environment or completely
-remove the old version prior to upgrading. See the
-`installation instructions <https://tmtoolkit.readthedocs.io/en/latest/install.html>`_.
-
 Requirements and installation
 -----------------------------
 
-**tmtoolkit works with Python 3.8 or newer (tested up to Python 3.10).**
+**tmtoolkit works with Python 3.8 or newer (tested up to Python 3.11).**
+
+.. note:: There are two dependencies, that don't work with Python 3.11 so far: *lda* and *wordcloud*. If you want to
+          do topic modeling via LDA and/or want to use word cloud visualizations, you must use Python 3.8 to 3.10 or
+          wait until lda and wordcloud receive updates that make them work under Python 3.11.
 
 The tmtoolkit package is highly modular and tries to install as few dependencies as possible. For requirements and
 installation procedures, please have a look at the
@@ -67,7 +62,8 @@ The tmtoolkit package offers several text preprocessing and text mining methods,
 - calculating and `visualizing corpus summary statistics <https://tmtoolkit.readthedocs.io/en/latest/preprocessing.html#Visualizing-corpus-summary-statistics>`_
 - finding out and joining `collocations <https://tmtoolkit.readthedocs.io/en/latest/preprocessing.html#Identifying-and-joining-token-collocations>`_
 - `splitting and sampling corpora <https://tmtoolkit.readthedocs.io/en/latest/text_corpora.html#Corpus-functions-for-document-management>`_
-- generating `n-grams <https://tmtoolkit.readthedocs.io/en/latest/preprocessing.html#Generating-n-grams>`_
+- generating `n-grams <https://tmtoolkit.readthedocs.io/en/latest/preprocessing.html#Generating-n-grams>`_ and using
+  `N-gram models <https://tmtoolkit.readthedocs.io/en/latest/api.html#module-tmtoolkit.ngrammodels>`_
 - generating `sparse document-term matrices <https://tmtoolkit.readthedocs.io/en/latest/preprocessing.html#Generating-a-sparse-document-term-matrix-(DTM)>`_
 
 Wherever possible and useful, these methods can operate in parallel to speed up computations with large datasets.
@@ -110,6 +106,8 @@ Other features
   `text files, tabular files (CSV or Excel), ZIP files or folders <https://tmtoolkit.readthedocs.io/en/latest/text_corpora.html#Loading-text-data>`_
 - `splitting and joining documents <https://tmtoolkit.readthedocs.io/en/latest/text_corpora.html#Corpus-functions-for-document-management>`_
 - `common statistics and transformations for document-term matrices <https://tmtoolkit.readthedocs.io/en/latest/bow.html>`_ like word cooccurrence and *tf-idf*
+- `interoperability with R <https://tmtoolkit.readthedocs.io/en/latest/rinterop.html>`_
+
 
 Limits
 ------
