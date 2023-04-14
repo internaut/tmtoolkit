@@ -61,6 +61,7 @@ The tmtoolkit package offers several text preprocessing and text mining methods,
   `document and token attributes as dataframes <https://tmtoolkit.readthedocs.io/en/latest/preprocessing.html#Accessing-tokens-and-token-attributes>`_
 - calculating and `visualizing corpus summary statistics <https://tmtoolkit.readthedocs.io/en/latest/preprocessing.html#Visualizing-corpus-summary-statistics>`_
 - finding out and joining `collocations <https://tmtoolkit.readthedocs.io/en/latest/preprocessing.html#Identifying-and-joining-token-collocations>`_
+- calculating `token cooccurrences <https://tmtoolkit.readthedocs.io/en/latest/preprocessing.html#Token-cooccurrence-matrices>`_
 - `splitting and sampling corpora <https://tmtoolkit.readthedocs.io/en/latest/text_corpora.html#Corpus-functions-for-document-management>`_
 - generating `n-grams <https://tmtoolkit.readthedocs.io/en/latest/preprocessing.html#Generating-n-grams>`_ and using
   `N-gram models <https://tmtoolkit.readthedocs.io/en/latest/api.html#module-tmtoolkit.ngrammodels>`_
