@@ -30,7 +30,7 @@ DEPS_EXTRA = {
     'sklearn': ['scikit-learn>=1.0.0,<2.0'],
     'gensim': ['gensim>=4.1.0,<5.0'],
     'topic_modeling_eval_extra': ['gmpy2>=2.1.0,<3.0'],
-    'rinterop': ['rpy2>=3.5.0,<4.0'],
+    'rinterop': ['rpy2>=3.5.11,<3.6'],
     'test': ['pytest>=7.2.0,<8.0', 'hypothesis>=6.49.0,<7.0'],
     'doc': ['Sphinx>=6.1.0,<7.0', 'sphinx-rtd-theme>=1.2.0', 'nbsphinx>=0.9.0,<1.0'],
     'dev': ['coverage>=7.2,<8.0', 'coverage-badge>=1.1.0', 'pytest-cov>=4.0.0,<5.0', 'twine>=4.0',

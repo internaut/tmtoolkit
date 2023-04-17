@@ -771,7 +771,7 @@ if find_spec('rpy2') is not None:
 
     import rpy2.robjects as robjects
     from rpy2.robjects.packages import importr
-    from rpy2.robjects.numpy2ri import numpy2rpy, rpy2py_floatvector, rpy2py_intvector
+    from rpy2.robjects.numpy2ri import numpy2rpy #, rpy2py_floatvector, rpy2py_intvector
     from rpy2.robjects.methods import RS4
 
     r_matrix = importr('Matrix')
@@ -826,10 +826,12 @@ if find_spec('rpy2') is not None:
         :param return_dimnames: if True, return row and column names as string lists
         :return: NumPy matrix of respective type
         """
-        if isinstance(m, robjects.vectors.IntMatrix):
-            pymat = rpy2py_intvector(m)
-        else:
-            pymat = rpy2py_floatvector(m)
+        # if isinstance(m, robjects.vectors.IntMatrix):
+        #     pymat = rpy2py_intvector(m)
+        # else:
+        #     pymat = rpy2py_floatvector(m)
+
+        pymat = np.array(m, dtype='int64' if isinstance(m, robjects.vectors.IntMatrix) else 'float64')
 
         if return_dimnames:
             rownames, colnames = _dimnames_from_r_mat(m)
@@ -880,11 +882,11 @@ if find_spec('rpy2') is not None:
         :return: SciPy sparse matrix in "CSC" format; if return_dimnames is True, return a triplet (sparse matrix,
                  row names, column names)
         """
-        i = rpy2py_floatvector(s.do_slot('i'))   # column indices
-        p = rpy2py_floatvector(s.do_slot('p'))   # index pointer
+        i = np.array(s.do_slot('i'))   # column indices
+        p = np.array(s.do_slot('p'))   # index pointer
         try:
             # data in slot "x" is always stored as float -> can't recover integer matrices
-            x = rpy2py_floatvector(s.do_slot('x'))   # non-zero elements
+            x = np.array(s.do_slot('x'))   # non-zero elements
         except LookupError:
             # sparse matrix has no non-zero elements
             x = np.array([], dtype='float')
