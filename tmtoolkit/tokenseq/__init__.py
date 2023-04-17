@@ -167,7 +167,7 @@ def token_collocation_matrix(sentences: List[List[StrOrInt]], min_count: int = 1
     :param embed_tokens: tokens that, if occurring inside an n-gram, are not counted; see :func:`token_ngrams`
     :param tokens_as_hashes: if True, return token type hashes (integers) instead of textual representations (strings)
     :param return_vocab: additionally return the vocabulary as numpy array for each axis of the matrix
-    :param return_bigrams_with_indices: additionally return a list of bigrams together a pair of indices of the
+    :param return_bigrams_with_indices: additionally return a list of bigrams together with a pair of indices of the
                                         respective bigram into the result matrix
     :return: a sparse collocation count matrix where the rows and columns represent bigram token pairs and the elements
              represent their collocation count; if `return_vocab` is True, also return the vocabulary for each matrix
@@ -223,7 +223,7 @@ def token_collocation_matrix(sentences: List[List[StrOrInt]], min_count: int = 1
     if return_vocab:
         return mat, bg_vocab_first, bg_vocab_second
     elif return_bigrams_with_indices:
-        return mat, list(zip(bigrams, zip(row_ind, col_ind)))
+        return mat, list(zip(bigrams.keys(), zip(row_ind, col_ind)))
     else:
         return mat
 

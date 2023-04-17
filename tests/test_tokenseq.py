@@ -410,8 +410,7 @@ def test_ppmi_matrix_hypothesis(xy, as_prob, as_sparse, alpha, add_k_smoothing):
        pass_embed_tokens=st.integers(min_value=0, max_value=3),
        tokens_as_hashes=st.booleans(),
        return_vocab=st.booleans(),
-       return_bigrams_with_indices=st.booleans()
-       )
+       return_bigrams_with_indices=st.booleans())
 def test_token_collocation_matrix_hypothesis(sentences, min_count, pass_embed_tokens, tokens_as_hashes,
                                              return_vocab, return_bigrams_with_indices):
     if tokens_as_hashes:
@@ -460,10 +459,15 @@ def test_token_collocation_matrix_hypothesis(sentences, min_count, pass_embed_to
                 assert mat.shape == (len(vocab1), len(vocab2))
 
             if return_bigrams_with_indices:
-                assert len(bigrams_w_indices) == 2
-                bigrams, bigram_ind = bigrams_w_indices
-                assert len(bigrams) == len(bigram_ind)
+                assert all(len(pair) == 2 for pair in bigrams_w_indices)
+                bigrams, bigram_ind = zip(*bigrams_w_indices)
                 assert np.prod(mat.shape) == len(bigrams)
+                assert all(isinstance(bg, tuple) for bg in bigrams)
+                assert all(len(bg) == 2 for bg in bigrams)
+                assert all(isinstance(t, int if tokens_as_hashes else str) for bg in bigrams for t in bg)
+                assert all(isinstance(ij, tuple) for ij in bigram_ind)
+                assert all(len(ij) == 2 for ij in bigram_ind)
+                assert all(0 <= i < mat.shape[0] and 0 <= j < mat.shape[1] for i, j in bigram_ind)
 
 
 @pytest.mark.parametrize('args, expected', [
