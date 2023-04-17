@@ -33,7 +33,7 @@ Text processing and normalization is often used to construct a Bag-of-Words (BoW
 Contributing to tmtoolkit
 -------------------------
 
-If you want to contribute to tmtoolkit, you can create code or documentation patches (updates) and submit them as `pull requests <https://github.com/WZBSocialScienceCenter/tmtoolkit/pulls>`_ on GitHub. The first thing to do for this is to fork the `GitHub repository <https://github.com/WZBSocialScienceCenter/tmtoolkit>`_ and to clone it on your local machine. It's best to create a separate branch for your updates next. You should then set up your local machine for development as follows:
+If you want to contribute to tmtoolkit, you can create code or documentation patches (updates) and submit them as `pull requests <https://github.com/internaut/tmtoolkit/pulls>`_ on GitHub. The first thing to do for this is to fork the `GitHub repository <https://github.com/internaut/tmtoolkit>`_ and to clone it on your local machine. It's best to create a separate branch for your updates next. You should then set up your local machine for development as follows:
 
 - create a `Python virtual environment <https://docs.python.org/3/tutorial/venv.html>`_ – make sure that the Python version you're using for this is supported by tmtoolkit
 - update pip via ``pip install -U pip``

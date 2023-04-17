@@ -37,7 +37,7 @@ the following languages are supported for text mining:
 
 The documentation for tmtoolkit is available on `tmtoolkit.readthedocs.org <https://tmtoolkit.readthedocs.org>`_ and
 the GitHub code repository is on
-`github.com/WZBSocialScienceCenter/tmtoolkit <https://github.com/WZBSocialScienceCenter/tmtoolkit>`_.
+`github.com/internaut/tmtoolkit <https://github.com/internaut/tmtoolkit>`_.
 
 Features
 --------
@@ -142,10 +142,10 @@ This documentation guides you in several chapters from installing tmtoolkit to i
 examples with built-in corpora and other datasets. All "hands on" chapters from
 `Getting started <getting_started.ipynb>`_ to `Topic modeling <topic_modeling.ipynb>`_ are generated from
 `Jupyter Notebooks <https://jupyter.org/>`_. If you want to follow along using these notebooks, you can download them
-from the `GitHub repository <https://github.com/WZBSocialScienceCenter/tmtoolkit/tree/master/doc/source>`_.
+from the `GitHub repository <https://github.com/internaut/tmtoolkit/tree/master/doc/source>`_.
 
 There are also a few other examples as plain Python scripts available in the
-`examples folder <https://github.com/WZBSocialScienceCenter/tmtoolkit/tree/master/examples>`_ of the GitHub repository.
+`examples folder <https://github.com/internaut/tmtoolkit/tree/master/examples>`_ of the GitHub repository.
 
 
 .. |pypi| image:: https://badge.fury.io/py/tmtoolkit.svg
@@ -156,12 +156,12 @@ There are also a few other examples as plain Python scripts available in the
     :target: https://pypi.org/project/tmtoolkit/
     :alt: Downloads from PyPI
 
-.. |runtests| image:: https://github.com/WZBSocialScienceCenter/tmtoolkit/actions/workflows/runtests.yml/badge.svg
-    :target: https://github.com/WZBSocialScienceCenter/tmtoolkit/actions/workflows/runtests.yml
+.. |runtests| image:: https://github.com/internaut/tmtoolkit/actions/workflows/runtests.yml/badge.svg
+    :target: https://github.com/internaut/tmtoolkit/actions/workflows/runtests.yml
     :alt: GitHub Actions CI Build Status
 
-.. |coverage| image:: https://raw.githubusercontent.com/WZBSocialScienceCenter/tmtoolkit/master/coverage.svg?sanitize=true
-    :target: https://github.com/WZBSocialScienceCenter/tmtoolkit/tree/master/tests
+.. |coverage| image:: https://raw.githubusercontent.com/internaut/tmtoolkit/master/coverage.svg?sanitize=true
+    :target: https://github.com/internaut/tmtoolkit/tree/master/tests
     :alt: Coverage status
 
 .. |rtd| image:: https://readthedocs.org/projects/tmtoolkit/badge/?version=latest

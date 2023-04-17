@@ -12,7 +12,7 @@ operations (via NumPy) and parallel computation (using Python's *multiprocessing
 
 The documentation for tmtoolkit is available on `tmtoolkit.readthedocs.org <https://tmtoolkit.readthedocs.org>`_ and
 the GitHub code repository is on
-`github.com/WZBSocialScienceCenter/tmtoolkit <https://github.com/WZBSocialScienceCenter/tmtoolkit>`_.
+`github.com/internaut/tmtoolkit <https://github.com/internaut/tmtoolkit>`_.
 
 Requirements and installation
 -----------------------------
@@ -128,7 +128,7 @@ License
 -------
 
 Code licensed under `Apache License 2.0 <https://www.apache.org/licenses/LICENSE-2.0>`_.
-See `LICENSE <https://github.com/WZBSocialScienceCenter/tmtoolkit/blob/master/LICENSE>`_ file.
+See `LICENSE <https://github.com/internaut/tmtoolkit/blob/master/LICENSE>`_ file.
 
 .. |pypi| image:: https://badge.fury.io/py/tmtoolkit.svg
     :target: https://badge.fury.io/py/tmtoolkit
@@ -138,12 +138,12 @@ See `LICENSE <https://github.com/WZBSocialScienceCenter/tmtoolkit/blob/master/LI
     :target: https://pypi.org/project/tmtoolkit/
     :alt: Downloads from PyPI
 
-.. |runtests| image:: https://github.com/WZBSocialScienceCenter/tmtoolkit/actions/workflows/runtests.yml/badge.svg
-    :target: https://github.com/WZBSocialScienceCenter/tmtoolkit/actions/workflows/runtests.yml
+.. |runtests| image:: https://github.com/internaut/tmtoolkit/actions/workflows/runtests.yml/badge.svg
+    :target: https://github.com/internaut/tmtoolkit/actions/workflows/runtests.yml
     :alt: GitHub Actions CI Build Status
 
-.. |coverage| image:: https://raw.githubusercontent.com/WZBSocialScienceCenter/tmtoolkit/master/coverage.svg?sanitize=true
-    :target: https://github.com/WZBSocialScienceCenter/tmtoolkit/tree/master/tests
+.. |coverage| image:: https://raw.githubusercontent.com/internaut/tmtoolkit/master/coverage.svg?sanitize=true
+    :target: https://github.com/internaut/tmtoolkit/tree/master/tests
     :alt: Coverage status
 
 .. |rtd| image:: https://readthedocs.org/projects/tmtoolkit/badge/?version=latest
