@@ -3,7 +3,7 @@ Tests for tmtoolkit.corpus module.
 
 Please see the special notes under "tests setup".
 
-.. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
+.. codeauthor:: Markus Konrad <post@mkonrad.net>
 """
 
 import math

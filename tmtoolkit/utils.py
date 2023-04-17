@@ -1,7 +1,7 @@
 """
 Misc. utility functions.
 
-.. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
+.. codeauthor:: Markus Konrad <post@mkonrad.net>
 """
 from __future__ import annotations
 

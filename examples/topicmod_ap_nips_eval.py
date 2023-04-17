@@ -7,7 +7,7 @@ This examples requires that you have installed tmtoolkit with the "lda" package.
 
 For more information, see the installation instructions: https://tmtoolkit.readthedocs.io/en/latest/install.html
 
-.. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
+.. codeauthor:: Markus Konrad <post@mkonrad.net>
 """
 
 import os

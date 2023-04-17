@@ -3,7 +3,7 @@ Internal module that implements functions that operate on :class:`~tmtoolkit.cor
 
 The source is separated into sections using a ``#%% ...`` marker.
 
-.. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
+.. codeauthor:: Markus Konrad <post@mkonrad.net>
 """
 import logging
 import operator

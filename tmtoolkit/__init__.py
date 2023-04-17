@@ -1,7 +1,7 @@
 """
 tmtoolkit – Text Mining and Topic Modeling Toolkit for Python
 
-Markus Konrad <markus.konrad@wzb.eu>
+.. codeauthor:: Markus Konrad <post@mkonrad.net>
 """
 
 from importlib.util import find_spec

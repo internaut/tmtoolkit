@@ -1,7 +1,7 @@
 """
 Functions to visualize corpus summary statistics.
 
-.. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
+.. codeauthor:: Markus Konrad <post@mkonrad.net>
 """
 
 import logging

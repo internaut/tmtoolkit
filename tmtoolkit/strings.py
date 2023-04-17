@@ -1,7 +1,7 @@
 """
 Module for functions that work strings, i.e. single tokens.
 
-.. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
+.. codeauthor:: Markus Konrad <post@mkonrad.net>
 """
 from __future__ import annotations
 

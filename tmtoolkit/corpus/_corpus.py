@@ -2,7 +2,7 @@
 Internal module that implements :class:`Corpus` class representing a set of texts as token sequences in labelled
 documents.
 
-.. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
+.. codeauthor:: Markus Konrad <post@mkonrad.net>
 """
 
 from __future__ import annotations  # req. for classmethod return type; see https://stackoverflow.com/a/49872353

@@ -1,7 +1,7 @@
 """
 Functions for creating a document-term matrix (DTM) and some compatibility functions for Gensim.
 
-.. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
+.. codeauthor:: Markus Konrad <post@mkonrad.net>
 """
 from importlib.util import find_spec
 from pathlib import Path

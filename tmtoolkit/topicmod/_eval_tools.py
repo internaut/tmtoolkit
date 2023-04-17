@@ -1,7 +1,7 @@
 """
 Common utility functions for LDA model evaluation.
 
-.. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
+.. codeauthor:: Markus Konrad <post@mkonrad.net>
 """
 
 import numpy as np

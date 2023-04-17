@@ -1,7 +1,7 @@
 """
 Tests for importing optional tmtoolkit.corpus module.
 
-.. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
+.. codeauthor:: Markus Konrad <post@mkonrad.net>
 """
 
 from importlib.util import find_spec

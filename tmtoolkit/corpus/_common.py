@@ -1,7 +1,7 @@
 """
 Internal module with common functions and constants for text processing in the :mod:`tmtoolkit.corpus` module.
 
-.. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
+.. codeauthor:: Markus Konrad <post@mkonrad.net>
 """
 
 import os

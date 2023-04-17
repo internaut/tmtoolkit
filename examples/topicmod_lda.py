@@ -10,7 +10,7 @@ installed an English language model for spaCy:
 
 For more information, see the installation instructions: https://tmtoolkit.readthedocs.io/en/latest/install.html
 
-.. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
+.. codeauthor:: Markus Konrad <post@mkonrad.net>
 """
 
 import os.path

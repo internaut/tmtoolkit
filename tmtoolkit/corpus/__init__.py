@@ -5,7 +5,7 @@ using the :class:`Corpus` class. This sub-package also provides functions that w
 Text parsing and processing relies on the `SpaCy library <https://spacy.io/>`_ which must be installed when using this
 sub-package.
 
-.. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
+.. codeauthor:: Markus Konrad <post@mkonrad.net>
 """
 
 from importlib.util import find_spec

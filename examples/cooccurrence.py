@@ -1,8 +1,8 @@
 """
 Example script showing the usage of token cooccurrence matrices.
 
-Markus Konrad <post@mkonrad.net>
-Feb. 2023
+.. codeauthor:: Markus Konrad <post@mkonrad.net>
+.. date:: Feb. 2023
 """
 
 import pandas as pd

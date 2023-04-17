@@ -1,7 +1,7 @@
 """
 Internal module that implements :class:`Document` class representing a text document as token sequence.
 
-.. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
+.. codeauthor:: Markus Konrad <post@mkonrad.net>
 """
 
 from __future__ import annotations   # req. for classmethod return type; see https://stackoverflow.com/a/49872353

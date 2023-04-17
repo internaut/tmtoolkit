@@ -1,7 +1,7 @@
 """
 Tests for tmtoolkit.tokenseq module.
 
-.. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
+.. codeauthor:: Markus Konrad <post@mkonrad.net>
 """
 
 import string

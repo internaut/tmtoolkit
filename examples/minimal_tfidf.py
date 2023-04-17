@@ -1,8 +1,8 @@
 """
 A minimal example to showcase a few features of tmtoolkit.
 
-Markus Konrad <markus.konrad@wzb.eu>
-Feb. 2022
+.. codeauthor:: Markus Konrad <post@mkonrad.net>
+.. date:: Feb. 2022
 """
 
 from tmtoolkit.corpus import Corpus, tokens_table, lemmatize, to_lowercase, dtm
