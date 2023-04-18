@@ -64,19 +64,20 @@ def _test_pad_sequence(s, s_type, el_type, left, right, left_symbol, right_symbo
         assert isinstance(spad, check_type)
 
         if s_type == 'nparray':
-            assert np.issubdtype(spad.dtype, el_type)
-
             if el_type == 'int':
-                el_type_check = np.int64
+                el_type_check = 'i'
             else:
-                el_type_check = str
+                el_type_check = 'U'   # unicode char
+
+            assert spad.dtype.kind == el_type_check
+            assert all(t.dtype.kind == el_type_check for t in list(spad))
         else:
             if el_type == 'int':
                 el_type_check = int
             else:
                 el_type_check = str
 
-        assert all(isinstance(t, el_type_check) for t in list(spad))
+            assert all(isinstance(t, el_type_check) for t in list(spad))
 
         assert len(spad) >= len(s)
 
@@ -213,7 +214,7 @@ def test_token_hash_convert(tokens, tokens_as_hashes, tokens_as_array, special_t
 
         if tokens_as_hashes:
             if tokens_as_array:
-                assert np.issubdtype(res.dtype, 'str')
+                assert res.dtype.kind == 'U'
             else:
                 assert all(isinstance(t, str) for t in res)
 
@@ -444,7 +445,7 @@ def test_token_collocation_matrix_hypothesis(sentences, min_count, pass_embed_to
             mat = res
 
         assert isinstance(mat, sparse.csr_matrix)
-        assert np.issubdtype(mat.dtype, 'uint32')
+        assert mat.dtype.kind == 'u'
 
         if len(tok) < 2:
             assert mat.nnz == 0

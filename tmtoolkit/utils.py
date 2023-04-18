@@ -210,7 +210,7 @@ def as_chararray(x: Union[np.ndarray, Sequence]) -> np.ndarray:
     """
     if len(x) > 0:
         if isinstance(x, np.ndarray):
-            if np.issubdtype(x.dtype, str):
+            if x.dtype.kind == 'U':
                 return x.copy()
             else:
                 return x.astype(str)
@@ -232,7 +232,7 @@ def chararray_elem_size(x: np.ndarray) -> int:
     :param x: NumPy unicode character array
     :return: reserved size of each element
     """
-    if isinstance(x, np.ndarray) and np.issubdtype(x.dtype, 'U'):
+    if isinstance(x, np.ndarray) and x.dtype.kind == 'U':
         return x.itemsize // numpy_unicode_bytes
     else:
         raise ValueError('`x` must be a NumPy unicode character array')

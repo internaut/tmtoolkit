@@ -52,7 +52,7 @@ def pad_sequence(s: Union[Tuple[StrOrInt, ...], List[StrOrInt], np.ndarray], lef
     if isinstance(s, tuple):
         return tuple(prepend) + s + tuple(append)
     elif isinstance(s, np.ndarray):
-        if np.issubdtype(s.dtype, 'str'):
+        if s.dtype.kind == 'U':
             to_dtype = 'str'
         else:
             to_dtype = s.dtype

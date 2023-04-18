@@ -502,10 +502,9 @@ def test_doc_tokens_hypothesis(corpora_en_serial_and_parallel_module, **args):
 
                     for v in res.values():
                         if len(v) > 0:
-                            assert np.issubdtype(v['token'].dtype,
-                                                 np.uint64 if args['tokens_as_hashes'] else np.dtype('O'))
+                            assert v['token'].dtype.kind == ('u' if args['tokens_as_hashes'] else 'O')
                             if args['sentences']:
-                                assert np.issubdtype(v['sent'].dtype, 'int')
+                                assert v['sent'].dtype.kind == 'i'
                                 assert np.min(v['sent']) == 0
 
                     res_tokens = {}
@@ -986,7 +985,7 @@ def test_vocabulary_hypothesis(corpora_en_serial_and_parallel_module, select, by
                     assert all(t in corp_flat for t in res)
 
                 if not convert_uint64hashes and tokens_as_hashes and select is None:
-                    assert all([np.issubdtype(t.dtype, 'uint64') for t in res])
+                    assert all(t.dtype.kind == 'u' for t in res)
                 else:
                     if tokens_as_hashes:
                         expect_type = int
@@ -1028,7 +1027,7 @@ def test_vocabulary_counts(corpora_en_serial_and_parallel_module, select, by_att
                         assert len(res) > 0
 
                     if not convert_uint64hashes and tokens_as_hashes:
-                        assert all([np.issubdtype(t.dtype, 'uint64') for t in res.keys()])
+                        assert all(t.dtype.kind == 'u' for t in res.keys())
                     else:
                         if tokens_as_hashes:
                             expect_type = int
@@ -1708,7 +1707,7 @@ def test_kwic_table_hypothesis(corpora_en_serial_and_parallel_module, **args):
                     assert contexts == list(range(len(dkwic)))
 
                 if len(dkwic) > 0:
-                    assert np.issubdtype(dkwic[matchattr], object)
+                    assert dkwic[matchattr].dtype.kind == 'O'
 
                     if args['glue'] is None:
                         assert np.all(0 <= dkwic['position'])
@@ -1888,7 +1887,7 @@ def test_token_cooccurrence_hypothesis(corpora_en_serial_and_parallel_module, **
                 if not (args['as_table'] and len(cooc) == 0):
                     # pandas doesn't respect the dtype when creating an empty dataframe (it's always float64 in that
                     # case)
-                    assert np.issubdtype(cooc.dtype, args['dtype'])
+                    assert cooc.dtype.kind == args['dtype'][:1]
 
                 # shape
                 assert cooc.shape == (n_tok, n_tok)
@@ -1992,7 +1991,7 @@ def test_token_cooccurrence_matrix_example(context_size, sparse_mat, triu):
         else:
             assert isinstance(cooc, np.ndarray)
 
-        assert np.issubdtype(cooc.dtype, 'int32')
+        assert cooc.dtype.kind == 'i'
 
         if triu:
             assert np.all(cooc == np.triu(expected))
@@ -3672,7 +3671,7 @@ def test__token_cooccurrence_matrix(docs, context_size, tokens, tokens_oov, spar
             assert isinstance(cooc, np.ndarray)
 
         # matrix dtype
-        assert np.issubdtype(cooc.dtype, dtype)
+        assert cooc.dtype.kind == dtype[:1]
 
         # matrix shape
         if corpussize == 0:
@@ -3798,7 +3797,7 @@ def _check_corpus_docs(corp: c.Corpus, has_sents: bool):
         assert d.bimaps is corp.bimaps
         assert isinstance(d.tokenmat, np.ndarray)
         assert d.tokenmat.ndim == 2
-        assert np.issubdtype(d.tokenmat.dtype, 'uint64')
+        assert d.tokenmat.dtype.kind == 'u'
         assert len(d) >= 0
         assert len(d) == len(d.tokenmat)
         assert isinstance(d.tokenmat_attrs, list)
