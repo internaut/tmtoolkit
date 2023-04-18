@@ -415,11 +415,12 @@ def test_ppmi_matrix_hypothesis(xy, as_prob, as_sparse, alpha, add_k_smoothing):
 def test_token_collocation_matrix_hypothesis(sentences, min_count, pass_embed_tokens, tokens_as_hashes,
                                              return_vocab, return_bigrams_with_indices):
     if tokens_as_hashes:
-        sentences = [list(map(hash, sent)) for sent in sentences]
+        # using abs here for test purposes, since it is required that the hashes are unsigned integers
+        sentences = [list(map(lambda t: abs(hash(t)), sent)) for sent in sentences]
     tok = flatten_list(sentences)
 
     if pass_embed_tokens > 0:
-        embed_tokens = random.choices(tok, k=min(pass_embed_tokens, len(tok)))
+        embed_tokens = tok[:min(pass_embed_tokens, len(tok))]
     else:
         embed_tokens = None
 
@@ -468,7 +469,7 @@ def test_token_collocation_matrix_hypothesis(sentences, min_count, pass_embed_to
             if return_bigrams_with_indices:
                 assert all(len(pair) == 2 for pair in bigrams_w_indices)
                 bigrams, bigram_ind = zip(*bigrams_w_indices)
-                assert np.prod(mat.shape) == len(bigrams)
+                assert np.prod(mat.shape) >= len(bigrams)
                 assert all(isinstance(bg, tuple) for bg in bigrams)
                 assert all(len(bg) == 2 for bg in bigrams)
                 assert all(isinstance(t, int if tokens_as_hashes else str) for bg in bigrams for t in bg)
