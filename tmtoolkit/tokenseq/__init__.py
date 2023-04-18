@@ -163,10 +163,10 @@ def token_collocation_matrix(sentences: List[List[StrOrInt]], min_count: int = 1
     .. seealso:: See :func:`~token_collocations` for a similar function that returns a list of collocations sorted by
                  a statistic score such as PPMI.
 
-    :param sentences: list of sentences containing lists of tokens; tokens can be items of any type if `glue` is None
+    :param sentences: list of sentences containing lists of tokens
     :param min_count: ignore collocations with number of occurrences below this threshold
     :param embed_tokens: tokens that, if occurring inside an n-gram, are not counted; see :func:`token_ngrams`
-    :param tokens_as_hashes: if True, return token type hashes (integers) instead of textual representations (strings)
+    :param tokens_as_hashes: if True, assume that tokens in `sentences` are hashes (integers) instead of strings
     :param return_vocab: additionally return the vocabulary as numpy array for each axis of the matrix
     :param return_bigrams_with_indices: additionally return a list of bigrams together with a pair of indices of the
                                         respective bigram into the result matrix

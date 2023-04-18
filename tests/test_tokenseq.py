@@ -451,9 +451,11 @@ def test_token_collocation_matrix_hypothesis(sentences, min_count, pass_embed_to
         assert isinstance(mat, sparse.csr_matrix)
         assert mat.dtype.kind == 'u'
 
-        if len(tok) < 2:
+        sents_contain_bigrams = any(len(sent) > 1 for sent in sentences)
+
+        if not sents_contain_bigrams:
             assert mat.nnz == 0
-        elif not embed_tokens and min_count == 0:
+        elif not embed_tokens and min_count == 0 and sents_contain_bigrams:
             assert mat.nnz > 0
 
         assert mat.shape[0] > 0
