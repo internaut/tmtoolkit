@@ -155,7 +155,8 @@ def token_collocation_matrix(sentences: List[List[StrOrInt]], min_count: int = 1
                              return_vocab: bool = False, return_bigrams_with_indices: bool = False) \
         -> Union[sparse.csr_matrix,
                  Tuple[sparse.csr_matrix, np.ndarray, np.ndarray],
-                 Tuple[sparse.csr_matrix, List[Tuple, Tuple[int, int]]]]:
+                 Tuple[sparse.csr_matrix, List[Tuple, Tuple[int, int]]],
+                 Tuple[sparse.csr_matrix, np.ndarray, np.ndarray, List[Tuple, Tuple[int, int]]]]:
     """
     Generate a sparse token collocation matrix from bigrams in `sentences`.
 
@@ -181,10 +182,14 @@ def token_collocation_matrix(sentences: List[List[StrOrInt]], min_count: int = 1
 
     vocab_dtype = 'uint64' if tokens_as_hashes else 'str'
     empty_mat = sparse.csr_matrix([], dtype='uint32', shape=(1, 1))
+    empty_vocab1 = np.array([], dtype=vocab_dtype)
+    empty_vocab2 = empty_vocab1.copy()
 
-    if return_vocab:
-        empty_res = (empty_mat, np.array([], dtype=vocab_dtype), np.array([], dtype=vocab_dtype))
-    elif return_bigrams_with_indices:
+    if return_vocab and return_bigrams_with_indices:
+        empty_res = (empty_mat, empty_vocab1, empty_vocab2, [])
+    elif return_vocab and not return_bigrams_with_indices:
+        empty_res = (empty_mat, empty_vocab1, empty_vocab2)
+    elif not return_vocab and return_bigrams_with_indices:
         empty_res = (empty_mat, [])
     else:
         empty_res = empty_mat
@@ -220,9 +225,11 @@ def token_collocation_matrix(sentences: List[List[StrOrInt]], min_count: int = 1
     col_ind = indices_of_matches(bg_second, bg_vocab_second, b_is_sorted=True, check_a_in_b=True)
     mat = sparse.coo_matrix((tuple(bigrams.values()), (row_ind, col_ind)), dtype='uint32').tocsr()
 
-    if return_vocab:
+    if return_vocab and return_bigrams_with_indices:
+        return mat, bg_vocab_first, bg_vocab_second, list(zip(bigrams.keys(), zip(row_ind, col_ind)))
+    elif return_vocab and not return_bigrams_with_indices:
         return mat, bg_vocab_first, bg_vocab_second
-    elif return_bigrams_with_indices:
+    elif not return_vocab and return_bigrams_with_indices:
         return mat, list(zip(bigrams.keys(), zip(row_ind, col_ind)))
     else:
         return mat

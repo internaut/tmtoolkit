@@ -433,11 +433,15 @@ def test_token_collocation_matrix_hypothesis(sentences, min_count, pass_embed_to
         res = tokenseq.token_collocation_matrix(**args)
         vocab1 = vocab2 = bigrams_w_indices = None
 
-        if return_vocab:
+        if return_vocab and return_bigrams_with_indices:
+            assert isinstance(res, tuple)
+            assert len(res) == 4
+            mat, vocab1, vocab2, bigrams_w_indices = res
+        elif return_vocab and not return_bigrams_with_indices:
             assert isinstance(res, tuple)
             assert len(res) == 3
             mat, vocab1, vocab2 = res
-        elif return_bigrams_with_indices:
+        elif not return_vocab and return_bigrams_with_indices:
             assert isinstance(res, tuple)
             assert len(res) == 2
             mat, bigrams_w_indices = res
