@@ -20,3 +20,4 @@ doc/source/data/corpus_norm.pickle
 .coverage
 examples/data/aclImdb_v1.tar.gz
 venv
+examples/data/topicmod_evaluate_*.png

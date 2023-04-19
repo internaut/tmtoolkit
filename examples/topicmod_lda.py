@@ -39,6 +39,7 @@ corp_picklefile = 'data/topicmod_lda_corpus.pickle'
 
 if os.path.exists(corp_picklefile):
     docs = load_corpus_from_picklefile(corp_picklefile)
+    docs.max_workers = 1.0
 else:
     docs = Corpus.from_builtin_corpus('en-NewsArticles', max_workers=1.0)
     save_corpus_to_picklefile(docs, corp_picklefile)
@@ -89,6 +90,7 @@ corp_preproc_picklefile = 'data/topicmod_lda_corpus_preprocessed.pickle'
 
 if os.path.exists(corp_preproc_picklefile):
     docs = load_corpus_from_picklefile(corp_preproc_picklefile)
+    docs.max_workers = 1.0
 else:
     remove_punctuation(docs)
     corpus_retokenize(docs)
@@ -119,7 +121,7 @@ else:
 
 eval_res_picklefile = 'data/topicmod_lda_eval_res.pickle'
 
-if os.path.exists(dtm_picklefile):
+if os.path.exists(eval_res_picklefile):
     eval_results = unpickle_file(eval_res_picklefile)
 else:
     const_params = {

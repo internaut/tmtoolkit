@@ -765,9 +765,15 @@ def check_context_size(context_size: Union[int, Tuple[int, int], List[int]]) -> 
 
 
 if find_spec('rpy2') is not None:
-    # silence R startup warnings
+    # silence R console writes (but store original functions for manual restoring as `rpy2_default_*`
     import rpy2.rinterface_lib.callbacks
+
+    rpy2_default_consolewrite_warnerror = rpy2.rinterface_lib.callbacks.consolewrite_warnerror
     rpy2.rinterface_lib.callbacks.consolewrite_warnerror = (lambda *args: None)
+    rpy2_default_consolewrite_print = rpy2.rinterface_lib.callbacks.consolewrite_print
+    rpy2.rinterface_lib.callbacks.consolewrite_print = (lambda *args: None)
+    rpy2_default_showmessage = rpy2.rinterface_lib.callbacks.showmessage
+    rpy2.rinterface_lib.callbacks.showmessage = (lambda *args: None)
 
     import rpy2.robjects as robjects
     from rpy2.robjects.packages import importr
