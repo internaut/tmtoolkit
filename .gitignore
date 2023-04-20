@@ -17,7 +17,7 @@ examples/data/*.pickle
 .tox/
 .Rhistory
 doc/source/data/corpus_norm.pickle
-.coverage
+.coverage*
 examples/data/aclImdb_v1.tar.gz
 venv
 examples/data/topicmod_evaluate_*.png

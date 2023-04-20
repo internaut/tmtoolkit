@@ -148,6 +148,8 @@ Publishing a new release for tmtoolkit involves several steps, listed below. You
 - run examples and check if they work
 - run tests locally via tox
 - push to GitHub repository ``develop`` or ``release*`` branch to run tests via GitHub Actions
+- when all tests pass locally and via GitHub Actions, update the test coverage report by running ``make cov_tests``
+  locally
 
 4. Publish package to PyPI:
 
