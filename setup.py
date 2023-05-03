@@ -11,7 +11,7 @@ from codecs import open
 from setuptools import setup, find_packages
 
 __title__ = 'tmtoolkit'
-__version__ = '0.12.0.rc1'
+__version__ = '0.12.0.rc2'
 __author__ = 'Markus Konrad'
 __license__ = 'Apache License 2.0'
 
