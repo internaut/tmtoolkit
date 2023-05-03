@@ -155,18 +155,17 @@ for PyPI first before publishing a final release.
 - when all tests pass locally and via GitHub Actions, update the test coverage report by running ``make cov_tests``
   locally
 
-4. Publish package to PyPI:
-
-- build source distribution via ``make sdist``
-- build wheel via ``make wheel``
-- check both via ``twine check dist/...``
-- if checks passed, upload both to PyPI via ``twine upload dist/...``
-
-5. Finalization
+4. Publish package to PyPI and GitHub:
 
 - make a new tag for the new version via ``git tag -a vX.Y.Z -m "version X.Y.Z"``
-- push the new tag to the GitHub repository
-- create a new release from the tag in the GitHub repository
+- push the new tag to the GitHub repository – this will automatically trigger the release workflow and publish the
+  source and built distributions to PyPI
+- build source distribution via ``make sdist``
+- build wheel via ``make wheel``
+- create a new release from the tag in the GitHub repository and upload the source and wheel distributions
+
+5. Finalization:
+
 - merge the development or release branch with the master branch and push the master branch to the GitHub repository
 - log in to `readthedocs.org <https://readthedocs.org/>`_, go to the project page, activate the current version, let
   it build the documentation
