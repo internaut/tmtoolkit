@@ -12,21 +12,16 @@ operations (via NumPy) and parallel computation (using Python's *multiprocessing
 
 The documentation for tmtoolkit is available on `tmtoolkit.readthedocs.org <https://tmtoolkit.readthedocs.org>`_ and
 the GitHub code repository is on
-`github.com/WZBSocialScienceCenter/tmtoolkit <https://github.com/WZBSocialScienceCenter/tmtoolkit>`_.
-
-**Upgrade note:**
-
-Since Feb 8 2022, the newest version 0.11.0 of tmtoolkit is available on PyPI. This version features a new API
-for text processing and mining which is incompatible with prior versions. It's advisable to first read the
-first three chapters of the `tutorial <https://tmtoolkit.readthedocs.io/en/latest/getting_started.html>`_
-to get used to the new API. You should also re-install tmtoolkit in a new virtual environment or completely
-remove the old version prior to upgrading. See the
-`installation instructions <https://tmtoolkit.readthedocs.io/en/latest/install.html>`_.
+`github.com/internaut/tmtoolkit <https://github.com/internaut/tmtoolkit>`_.
 
 Requirements and installation
 -----------------------------
 
-**tmtoolkit works with Python 3.8 or newer (tested up to Python 3.10).**
+**tmtoolkit works with Python 3.8 or newer (tested up to Python 3.11).**
+
+.. note:: There are two dependencies, that don't work with Python 3.11 so far: *lda* and *wordcloud*. If you want to
+          do topic modeling via LDA and/or want to use word cloud visualizations, you must use Python 3.8 to 3.10 or
+          wait until lda and wordcloud receive updates that make them work under Python 3.11.
 
 The tmtoolkit package is highly modular and tries to install as few dependencies as possible. For requirements and
 installation procedures, please have a look at the
@@ -66,8 +61,10 @@ The tmtoolkit package offers several text preprocessing and text mining methods,
   `document and token attributes as dataframes <https://tmtoolkit.readthedocs.io/en/latest/preprocessing.html#Accessing-tokens-and-token-attributes>`_
 - calculating and `visualizing corpus summary statistics <https://tmtoolkit.readthedocs.io/en/latest/preprocessing.html#Visualizing-corpus-summary-statistics>`_
 - finding out and joining `collocations <https://tmtoolkit.readthedocs.io/en/latest/preprocessing.html#Identifying-and-joining-token-collocations>`_
+- calculating `token cooccurrences <https://tmtoolkit.readthedocs.io/en/latest/preprocessing.html#Token-cooccurrence-matrices>`_
 - `splitting and sampling corpora <https://tmtoolkit.readthedocs.io/en/latest/text_corpora.html#Corpus-functions-for-document-management>`_
-- generating `n-grams <https://tmtoolkit.readthedocs.io/en/latest/preprocessing.html#Generating-n-grams>`_
+- generating `n-grams <https://tmtoolkit.readthedocs.io/en/latest/preprocessing.html#Generating-n-grams>`_ and using
+  `N-gram models <https://tmtoolkit.readthedocs.io/en/latest/api.html#module-tmtoolkit.ngrammodels>`_
 - generating `sparse document-term matrices <https://tmtoolkit.readthedocs.io/en/latest/preprocessing.html#Generating-a-sparse-document-term-matrix-(DTM)>`_
 
 Wherever possible and useful, these methods can operate in parallel to speed up computations with large datasets.
@@ -110,6 +107,8 @@ Other features
   `text files, tabular files (CSV or Excel), ZIP files or folders <https://tmtoolkit.readthedocs.io/en/latest/text_corpora.html#Loading-text-data>`_
 - `splitting and joining documents <https://tmtoolkit.readthedocs.io/en/latest/text_corpora.html#Corpus-functions-for-document-management>`_
 - `common statistics and transformations for document-term matrices <https://tmtoolkit.readthedocs.io/en/latest/bow.html>`_ like word cooccurrence and *tf-idf*
+- `interoperability with R <https://tmtoolkit.readthedocs.io/en/latest/rinterop.html>`_
+
 
 Limits
 ------
@@ -129,7 +128,7 @@ License
 -------
 
 Code licensed under `Apache License 2.0 <https://www.apache.org/licenses/LICENSE-2.0>`_.
-See `LICENSE <https://github.com/WZBSocialScienceCenter/tmtoolkit/blob/master/LICENSE>`_ file.
+See `LICENSE <https://github.com/internaut/tmtoolkit/blob/master/LICENSE>`_ file.
 
 .. |pypi| image:: https://badge.fury.io/py/tmtoolkit.svg
     :target: https://badge.fury.io/py/tmtoolkit
@@ -139,12 +138,12 @@ See `LICENSE <https://github.com/WZBSocialScienceCenter/tmtoolkit/blob/master/LI
     :target: https://pypi.org/project/tmtoolkit/
     :alt: Downloads from PyPI
 
-.. |runtests| image:: https://github.com/WZBSocialScienceCenter/tmtoolkit/actions/workflows/runtests.yml/badge.svg
-    :target: https://github.com/WZBSocialScienceCenter/tmtoolkit/actions/workflows/runtests.yml
+.. |runtests| image:: https://github.com/internaut/tmtoolkit/actions/workflows/runtests.yml/badge.svg
+    :target: https://github.com/internaut/tmtoolkit/actions/workflows/runtests.yml
     :alt: GitHub Actions CI Build Status
 
-.. |coverage| image:: https://raw.githubusercontent.com/WZBSocialScienceCenter/tmtoolkit/master/coverage.svg?sanitize=true
-    :target: https://github.com/WZBSocialScienceCenter/tmtoolkit/tree/master/tests
+.. |coverage| image:: https://raw.githubusercontent.com/internaut/tmtoolkit/master/coverage.svg?sanitize=true
+    :target: https://github.com/internaut/tmtoolkit/tree/master/tests
     :alt: Coverage status
 
 .. |rtd| image:: https://readthedocs.org/projects/tmtoolkit/badge/?version=latest

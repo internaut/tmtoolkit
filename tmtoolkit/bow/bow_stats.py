@@ -1,7 +1,7 @@
 """
 Common statistics for bag-of-words (BoW) or sparse word representation models.
 
-.. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
+.. codeauthor:: Markus Konrad <post@mkonrad.net>
 """
 
 import numpy as np

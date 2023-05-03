@@ -1,7 +1,7 @@
 """
 Internal module that implements :class:`Document` class representing a text document as token sequence.
 
-.. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
+.. codeauthor:: Markus Konrad <post@mkonrad.net>
 """
 
 from __future__ import annotations   # req. for classmethod return type; see https://stackoverflow.com/a/49872353
@@ -431,7 +431,7 @@ def document_from_attrs(bimaps: Dict[str, bidict],
     def values_as_uint64arr(attr, val):
         """Helper function that tries to convert `val` to an array of hashes, depending on the type of `val`."""
         if isinstance(val, np.ndarray):
-            if np.issubdtype(val.dtype, str):    # this is an array of strings -> convert to hashes
+            if val.dtype.kind == 'U':    # this is an array of strings -> convert to hashes
                 return uint64arr_from_strings(attr, val.tolist())
             else:
                 return val.astype('uint64')

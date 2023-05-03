@@ -3,7 +3,7 @@ Internal module that implements functions that operate on :class:`~tmtoolkit.cor
 
 The source is separated into sections using a ``#%% ...`` marker.
 
-.. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
+.. codeauthor:: Markus Konrad <post@mkonrad.net>
 """
 import logging
 import operator
@@ -1624,10 +1624,10 @@ def token_cooccurrence(docs: Corpus,
             return empty_res
 
     if token_hashes is None:
-        if isinstance(tokens, np.ndarray) and np.issubdtype(tokens.dtype, 'uint64'):
+        if isinstance(tokens, np.ndarray) and tokens.dtype.kind == 'u':
             token_hashes = tokens
         else:
-            if (isinstance(tokens, np.ndarray) and np.issubdtype(tokens.dtype, 'str')) \
+            if (isinstance(tokens, np.ndarray) and tokens.dtype.kind == 'U') \
                     or isinstance(next(iter(tokens)), str):
                 # list or NumPy array of strings
                 token_hashes = np.array(token_hash_convert(tokens, stringstore=bimap_attr.inv), dtype='uint64')
@@ -1635,7 +1635,7 @@ def token_cooccurrence(docs: Corpus,
                 token_hashes = np.array(tokens, dtype='uint64')
 
     assert n_tok == len(token_hashes)
-    assert isinstance(token_hashes, np.ndarray) and np.issubdtype(token_hashes.dtype, 'uint64')
+    assert isinstance(token_hashes, np.ndarray) and token_hashes.dtype.kind == 'u'
 
     @parallelexec(collect_fn=merge_dicts if per_document else list)
     def _parallel_token_cooc(chunk):
@@ -2767,7 +2767,7 @@ def filter_tokens_by_mask(docs: Corpus, /, mask: Dict[str, Union[List[bool], np.
 
         if not isinstance(m, np.ndarray):
             m = np.array(m, dtype=bool)
-        elif not np.issubdtype(m.dtype, bool):
+        elif m.dtype.kind != 'b':
             m = m.astype(bool)
 
         if inverse:
@@ -3917,7 +3917,7 @@ def _build_kwic_parallel(docs, search_tokens, context_size, by_attr, match_type,
             docdata = docs[lbl]
             tok_arr = docdata.pop('_matchagainst')
 
-            if not isinstance(tok_arr, np.ndarray) or not np.issubdtype(tok_arr.dtype, str):
+            if not isinstance(tok_arr, np.ndarray) or tok_arr.dtype.kind != 'U':
                 assert isinstance(tok_arr, (list, tuple, np.ndarray))
                 tok_arr = as_chararray(tok_arr)
 
@@ -4144,7 +4144,7 @@ def _token_cooccurrence_matrix(docs: Sequence[Union[List[StrOrInt], np.ndarray]]
     if len(set(tokens)) != len(tokens):
         raise ValueError('`tokens` shall not contain duplicate elements')
 
-    as_hashes = (isinstance(tokens, np.ndarray) and np.issubdtype(tokens.dtype, 'uint64')) or \
+    as_hashes = (isinstance(tokens, np.ndarray) and tokens.dtype.kind == 'u') or \
                 isinstance(next(iter(tokens)), int)
 
     if as_hashes:

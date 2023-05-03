@@ -2,8 +2,8 @@
 An example to show how to export prepare and export a document-term matrix to R.
 R code is available in dtm_to_R.R.
 
-Markus Konrad <post@mkonrad.net>
-Dec. 2022
+.. codeauthor:: Markus Konrad <post@mkonrad.net>
+.. date:: Dec. 2022
 """
 import os.path
 

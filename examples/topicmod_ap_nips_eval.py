@@ -1,13 +1,22 @@
 """
 Topic model evaluation for AP and NIPS datasets (http://archive.ics.uci.edu/ml/datasets/Bag+of+Words).
 
+Run as:
+
+    python topicmod_ap_nips_eval.py <dataset> <num. workers> <eta> <alpha numerator>
+
+Where ``<dataset>`` is either ``data/ap.pickle`` or ``data/nips.pickle``, ``<num. workers>`` is the number of worker
+processes to be used (should be >= 1 and <= the number of CPU cores in your machine), eta is the LDA eta (a.k.a. "beta")
+parameter (should be in range (0, 1]) and ``<alpha numerator>`` is used for calculating the  LDA alpha parameter as
+``<alpha numerator> / K`` where K is the number of topics.
+
 This examples requires that you have installed tmtoolkit with the "lda" package.
 
     pip install -U "tmtoolkit[lda]"
 
 For more information, see the installation instructions: https://tmtoolkit.readthedocs.io/en/latest/install.html
 
-.. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
+.. codeauthor:: Markus Konrad <post@mkonrad.net>
 """
 
 import os

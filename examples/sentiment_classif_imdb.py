@@ -13,8 +13,8 @@ English language model for spaCy:
 
 For more information, see the installation instructions: https://tmtoolkit.readthedocs.io/en/latest/install.html
 
-Markus Konrad <post@mkonrad.net>
-Sep. 2022
+.. codeauthor:: Markus Konrad <post@mkonrad.net>
+.. date:: Sep. 2022
 
 .. [Maas2011]  Andrew L. Maas, Raymond E. Daly, Peter T. Pham, Dan Huang, Andrew Y. Ng, and Christopher Potts. (2011).
                Learning Word Vectors for Sentiment Analysis. The 49th Annual Meeting of the Association for

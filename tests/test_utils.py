@@ -130,7 +130,7 @@ def test_empty_chararray():
     assert isinstance(res, np.ndarray)
     assert len(res) == 0
     assert res.ndim == 1
-    assert np.issubdtype(res.dtype, 'str')
+    assert res.dtype.kind == 'U'
 
 
 @given(x=st.lists(st.integers()),
@@ -144,7 +144,7 @@ def test_as_chararray(x, as_numpy_array):
     assert isinstance(res, np.ndarray)
     assert len(res) == len(x)
     assert res.ndim == 1
-    assert np.issubdtype(res.dtype, 'str')
+    assert res.dtype.kind == 'U'
     assert res.tolist() == list(map(str, x_orig))
 
 
@@ -265,10 +265,10 @@ def test_pairwise_max_table(m, pass_sparse, labels, output_columns, sort, sort_a
             assert np.all(res_vals > 0)
 
         if labels:
-            assert np.issubdtype(res_lbls.dtype, 'str') or np.issubdtype(res_lbls.dtype, object)
+            assert res_lbls.dtype.kind in {'U', 'O'}
             assert np.all(lbl in args['labels'] for lbl in res_lbls.flatten())
         else:
-            assert np.issubdtype(res_lbls.dtype, 'int')
+            assert res_lbls.dtype.kind == 'i'
             assert np.all(res_lbls >= 0)
             assert np.all(res_lbls < n)
 
@@ -746,9 +746,9 @@ def test_mat_rinterop(m, to_int, pass_dimnames, return_dimnames):
 
     if to_int:
         assert isinstance(rm, robjects.vectors.IntMatrix)
-        assert np.issubdtype(m_.dtype, 'int32') or np.issubdtype(m_.dtype, 'int64')
+        assert m_.dtype.kind == 'i'
     else:
         assert isinstance(rm, robjects.vectors.FloatMatrix)
-        assert np.issubdtype(m_.dtype, 'float32') or np.issubdtype(m_.dtype, 'float64')
+        assert m_.dtype.kind == 'f'
 
     assert np.allclose(m, m_)

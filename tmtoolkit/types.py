@@ -1,7 +1,7 @@
 """
 Module with common types used in type annotations throughout this project.
 
-.. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
+.. codeauthor:: Markus Konrad <post@mkonrad.net>
 """
 
 from enum import IntEnum

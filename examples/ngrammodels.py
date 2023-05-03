@@ -8,8 +8,8 @@ English and a German language model for spaCy:
     pip install -U "tmtoolkit[recommended]"
     python -m tmtoolkit setup en,de
 
-Markus Konrad <post@mkonrad.net>
-Nov. 2022
+.. codeauthor:: Markus Konrad <post@mkonrad.net>
+.. date:: Nov. 2022
 """
 
 import tmtoolkit.corpus as c

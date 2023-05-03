@@ -1,7 +1,7 @@
 """
 Functions to visualize topic models and topic model evaluation results.
 
-.. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
+.. codeauthor:: Markus Konrad <post@mkonrad.net>
 """
 import itertools
 import math

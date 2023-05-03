@@ -3,7 +3,7 @@ tmtoolkit – Text Mining and Topic Modeling Toolkit for Python
 
 CLI module
 
-Markus Konrad <markus.konrad@wzb.eu>
+.. codeauthor:: Markus Konrad <post@mkonrad.net>
 """
 
 HELP_TEXT = """tmtoolkit installation setup

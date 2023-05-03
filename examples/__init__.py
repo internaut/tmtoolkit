@@ -1,5 +1,5 @@
 """
 tmtoolkit – examples
 
-Markus Konrad <markus.konrad@wzb.eu>
+.. codeauthor:: Markus Konrad <post@mkonrad.net>
 """

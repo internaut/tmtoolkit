@@ -1,7 +1,7 @@
 """
 Misc. utility functions.
 
-.. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
+.. codeauthor:: Markus Konrad <post@mkonrad.net>
 """
 from __future__ import annotations
 
@@ -210,7 +210,7 @@ def as_chararray(x: Union[np.ndarray, Sequence]) -> np.ndarray:
     """
     if len(x) > 0:
         if isinstance(x, np.ndarray):
-            if np.issubdtype(x.dtype, str):
+            if x.dtype.kind == 'U':
                 return x.copy()
             else:
                 return x.astype(str)
@@ -232,7 +232,7 @@ def chararray_elem_size(x: np.ndarray) -> int:
     :param x: NumPy unicode character array
     :return: reserved size of each element
     """
-    if isinstance(x, np.ndarray) and np.issubdtype(x.dtype, 'U'):
+    if isinstance(x, np.ndarray) and x.dtype.kind == 'U':
         return x.itemsize // numpy_unicode_bytes
     else:
         raise ValueError('`x` must be a NumPy unicode character array')
@@ -765,13 +765,19 @@ def check_context_size(context_size: Union[int, Tuple[int, int], List[int]]) -> 
 
 
 if find_spec('rpy2') is not None:
-    # silence R startup warnings
+    # silence R console writes (but store original functions for manual restoring as `rpy2_default_*`
     import rpy2.rinterface_lib.callbacks
+
+    rpy2_default_consolewrite_warnerror = rpy2.rinterface_lib.callbacks.consolewrite_warnerror
     rpy2.rinterface_lib.callbacks.consolewrite_warnerror = (lambda *args: None)
+    rpy2_default_consolewrite_print = rpy2.rinterface_lib.callbacks.consolewrite_print
+    rpy2.rinterface_lib.callbacks.consolewrite_print = (lambda *args: None)
+    rpy2_default_showmessage = rpy2.rinterface_lib.callbacks.showmessage
+    rpy2.rinterface_lib.callbacks.showmessage = (lambda *args: None)
 
     import rpy2.robjects as robjects
     from rpy2.robjects.packages import importr
-    from rpy2.robjects.numpy2ri import numpy2rpy, rpy2py_floatvector, rpy2py_intvector
+    from rpy2.robjects.numpy2ri import numpy2rpy #, rpy2py_floatvector, rpy2py_intvector
     from rpy2.robjects.methods import RS4
 
     r_matrix = importr('Matrix')
@@ -826,10 +832,12 @@ if find_spec('rpy2') is not None:
         :param return_dimnames: if True, return row and column names as string lists
         :return: NumPy matrix of respective type
         """
-        if isinstance(m, robjects.vectors.IntMatrix):
-            pymat = rpy2py_intvector(m)
-        else:
-            pymat = rpy2py_floatvector(m)
+        # if isinstance(m, robjects.vectors.IntMatrix):
+        #     pymat = rpy2py_intvector(m)
+        # else:
+        #     pymat = rpy2py_floatvector(m)
+
+        pymat = np.array(m, dtype='int64' if isinstance(m, robjects.vectors.IntMatrix) else 'float64')
 
         if return_dimnames:
             rownames, colnames = _dimnames_from_r_mat(m)
@@ -880,11 +888,11 @@ if find_spec('rpy2') is not None:
         :return: SciPy sparse matrix in "CSC" format; if return_dimnames is True, return a triplet (sparse matrix,
                  row names, column names)
         """
-        i = rpy2py_floatvector(s.do_slot('i'))   # column indices
-        p = rpy2py_floatvector(s.do_slot('p'))   # index pointer
+        i = np.array(s.do_slot('i'))   # column indices
+        p = np.array(s.do_slot('p'))   # index pointer
         try:
             # data in slot "x" is always stored as float -> can't recover integer matrices
-            x = rpy2py_floatvector(s.do_slot('x'))   # non-zero elements
+            x = np.array(s.do_slot('x'))   # non-zero elements
         except LookupError:
             # sparse matrix has no non-zero elements
             x = np.array([], dtype='float')

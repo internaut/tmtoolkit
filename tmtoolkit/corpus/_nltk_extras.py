@@ -2,7 +2,7 @@
 Internal module with some additional functions that are only available when the `NLTK <https://www.nltk.org/>`_ package
 is installed.
 
-.. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
+.. codeauthor:: Markus Konrad <post@mkonrad.net>
 """
 from typing import Optional
 

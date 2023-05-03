@@ -3,6 +3,23 @@
 Version history
 ===============
 
+0.12.0 - 2023-05-03
+-------------------
+
+- added optional interoperability functions for data exchange with R
+- added ``token_cooccurrence`` function for calculating a token cooccurrence matrix for a corpus
+- added common ``by_attr`` argument for many text processing/mining functions to operate only on a certain token
+  attribute
+- added new function ``token_collocation_matrix`` for calculating a token collocation matrix based on bigrams
+- added PPMI measure (``ppmi`` function)
+- added ``NGramModel`` class for N-gram models
+- added ``NaiveBayesClassifier`` class for Naive Bayes classification models
+- added `Health News in Twitter Data Set <https://archive.ics.uci.edu/ml/datasets/Health+News+in+Twitter>`_
+- added 5 new languages now supported by SpaCy (Kroatian, Finnish, Korean, Swedish, Ukrainian)
+- fix: don't store parallelization worker related attributes on pickling
+- updated dependencies (only SpaCy 3.3 or higher is now supported)
+- compat. with Python 3.11
+
 0.11.2 - 2022-03-11
 -------------------
 
