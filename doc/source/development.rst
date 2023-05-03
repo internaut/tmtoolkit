@@ -103,7 +103,34 @@ The ``Makefile`` in the root folder contains a target for generating coverage re
 Documentation
 -------------
 
-The `Sphinx <https://www.sphinx-doc.org/>`_ package is used for documentation. All objects exposed by the API are documented in the Sphinx format. All other parts of the documentation reside in ``doc/source``. The configuration for Sphinx lies in ``doc/source/conf.py``. The `nbsphinx <https://nbsphinx.readthedocs.io/>`_ package is used for generating the tutorial from Jupyter Notebooks which are also located in ``doc/source``.
+The `Sphinx <https://www.sphinx-doc.org/>`_ package is used for documentation. All objects exposed by the API are
+documented in the Sphinx format. All other parts of the documentation reside in ``doc/source``. The configuration for
+Sphinx lies in ``doc/source/conf.py``. The `nbsphinx <https://nbsphinx.readthedocs.io/>`_ package is used for generating
+the tutorial from Jupyter Notebooks which are also located in ``doc/source``.
+
+Some cells in the Jupyter Notebooks generate long sequences of data. In order to limit the number of items that are
+displayed in the cell output of these sequences, it is advisable to first generate an IPython profile via
+``ipython profile create tmtoolkitdoc`` and then to adapt the generated profile configuration in
+``~/.ipython/profile_tmtoolkitdoc/ipython_config.py`` to set the maximum number of displayed sequence items with
+``c.PlainTextFormatter.max_seq_length``. Finally, the IPython kernel for the Jupyter Notebooks needs to be adapted to
+load the profile by editing ``<VENV_PATH>/share/jupyter/kernels/python3/kernel.json`` (note the new line
+``"--profile=tmtoolkitdoc"``)::
+
+    {
+     "argv": [
+      "python",
+      "-m",
+      "ipykernel_launcher",
+      "--profile=tmtoolkitdoc",
+      "-f",
+      "{connection_file}"
+     ],
+     "display_name": "Python 3 (ipykernel)",
+     "language": "python",
+     "metadata": {
+      "debugger": true
+     }
+    }
 
 The ``Makefile`` in the ``doc`` folder has several targets for generating the documentation. These are:
 
@@ -113,7 +140,10 @@ The ``Makefile`` in the ``doc`` folder has several targets for generating the do
 
 The generated documentation then resides under ``doc/build``.
 
-The documentation is published at `tmtoolkit.readthedocs.io <https://tmtoolkit.readthedocs.io/en/latest/>`_. For this, new commits to the master branch of the GitHub project or new tags are automatically built by `readthedocs.org <https://readthedocs.org/>`_. The ``.readthedocs.yaml`` file in the root folder sets up the build process for readthedocs.org.
+The documentation is published at `tmtoolkit.readthedocs.io <https://tmtoolkit.readthedocs.io/en/latest/>`_. For this,
+new commits to the master branch of the GitHub project or new tags are automatically built by
+`readthedocs.org <https://readthedocs.org/>`_. The ``.readthedocs.yaml`` file in the root folder sets up the build
+process for readthedocs.org.
 
 
 Continuous integration
