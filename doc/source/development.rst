@@ -138,7 +138,7 @@ for PyPI first before publishing a final release.
   ``setup.py``
 - check if the compatible Python versions should be updated in ``setup.py``
 - set the new version in ``setup.py`` and ``tmtoolkit/__init__.py`` (consider first using a pre-release version denoted
-  by ``.rcN`` version suffix)
+  by ``rcN`` version suffix)
 
 2. Documentation updates:
 
