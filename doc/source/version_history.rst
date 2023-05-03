@@ -3,7 +3,7 @@
 Version history
 ===============
 
-0.12.0 - 2023-04-XX
+0.12.0 - 2023-05-03
 -------------------
 
 - added optional interoperability functions for data exchange with R

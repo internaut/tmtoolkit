@@ -127,14 +127,18 @@ The GA set up for the tests is done in ``.github/worflows/runtests.yml``. There 
 Release management
 ------------------
 
-Publishing a new release for tmtoolkit involves several steps, listed below. You may consider creating a `pre-release <https://packaging.python.org/en/latest/guides/distributing-packages-using-setuptools/#pre-release-versioning>`_ for PyPI first before publishing a final release.
+Publishing a new release for tmtoolkit involves several steps, listed below. You may consider creating a
+`pre-release <https://packaging.python.org/en/latest/guides/distributing-packages-using-setuptools/#pre-release-versioning>`_
+for PyPI first before publishing a final release.
 
 1. Preparation:
 
 - create a new branch for the release version X.Y.Z as ``releaseX.Y.Z``
-- check if there are new minimum version requirements for dependencies or generally new dependencies to be added in ``setup.py``
+- check if there are new minimum version requirements for dependencies or generally new dependencies to be added in
+  ``setup.py``
 - check if the compatible Python versions should be updated in ``setup.py``
-- set the new version in ``setup.py`` and ``tmtoolkit/__init__.py``
+- set the new version in ``setup.py`` and ``tmtoolkit/__init__.py`` (consider first using a pre-release version denoted
+  by ``.rcN`` version suffix)
 
 2. Documentation updates:
 
@@ -164,16 +168,25 @@ Publishing a new release for tmtoolkit involves several steps, listed below. You
 - push the new tag to the GitHub repository
 - create a new release from the tag in the GitHub repository
 - merge the development or release branch with the master branch and push the master branch to the GitHub repository
-- log in to `readthedocs.org <https://readthedocs.org/>`_, go to the project page, activate the current version, let it build the documentation
+- log in to `readthedocs.org <https://readthedocs.org/>`_, go to the project page, activate the current version, let
+  it build the documentation
 - verify documentation on `tmtoolkit.readthedocs.io <https://tmtoolkit.readthedocs.io/en/latest/>`_
 
-If you notice a (major) mistake in a release *after* publication, you have several options like yanking the release on PyPI, publishing a post-release or updating the build number of the wheel. See `this blog post <https://snarky.ca/what-to-do-when-you-botch-a-release-on-pypi/>`_ for more information about these options.
+If you notice a (major) mistake in a release *after* publication, you have several options like yanking the release on
+PyPI, publishing a post-release or updating the build number of the wheel. See
+`this blog post <https://snarky.ca/what-to-do-when-you-botch-a-release-on-pypi/>`_ for more information about these
+options.
 
 
 API style
 ---------
 
-The tmtoolkit package provides a *functional API*. This is quite different from object-oriented APIs that are found in many other Python packages, where a programmer mainly uses classes and their methods that are exposed by an API. The tmtoolkit API on the other hand mainly exposes data structures and functions that operate on these data structures. In tmtoolkit, Python classes are usually used to implement more complex data structures such as documents or document corpora, but these classes don't provide (public) methods. Rather, they are used as function arguments, for example as in the large set of *corpus functions* that operate on text corpora as explained below.
+The tmtoolkit package provides a *functional API*. This is quite different from object-oriented APIs that are found in
+many other Python packages, where a programmer mainly uses classes and their methods that are exposed by an API. The
+tmtoolkit API on the other hand mainly exposes data structures and functions that operate on these data structures. In
+tmtoolkit, Python classes are usually used to implement more complex data structures such as documents or document
+corpora, but these classes don't provide (public) methods. Rather, they are used as function arguments, for example as
+in the large set of *corpus functions* that operate on text corpora as explained below.
 
 
 Implementation details
@@ -182,29 +195,67 @@ Implementation details
 Top-level module and setup routine
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-The ``__main__.py`` file provides a command-line interface for the package. It's only purpose is to allow easy installation of SpaCy language models via the :ref:`setup routine <setup>`. The ``tokenseq`` module provides functions that operate on single (string) tokens or sequences of tokens. These functions are used mainly internally in the ``corpus`` module, but are also exposed by the API to be used from a package user. The ``utils.py`` module provides helper functions used internally throughout the package, but also to be possibly used from a package user.
+The ``__main__.py`` file provides a command-line interface for the package. It's only purpose is to allow easy
+installation of SpaCy language models via the :ref:`setup routine <setup>`. The ``tokenseq`` module provides functions
+that operate on single (string) tokens or sequences of tokens. These functions are used mainly internally in the
+``corpus`` module, but are also exposed by the API to be used from a package user. The ``utils.py`` module provides
+helper functions used internally throughout the package, but also to be possibly used from a package user.
 
 ``bow`` module
 ^^^^^^^^^^^^^^
 
-This module provides functions for generating document-term-matrices (DTMs), which are central to the BoW concept, and some common statistics used for these matrices.
+This module provides functions for generating document-term-matrices (DTMs), which are central to the BoW concept, and
+some common statistics used for these matrices.
 
 ``corpus`` module
 ^^^^^^^^^^^^^^^^^
 
 This is the central module for text processing and text mining.
 
-At the core of this module, there is the :class:`~tmtoolkit.corpus.Corpus` class implemented in ``corpus/_corpus.py``. It takes documents with raw text as input (i.e. a dict mapping *document labels* to text strings) and applies a SpaCy NLP pipeline to it. After that, the corpus consists of  :class:`~tmtoolkit.corpus.Document` (implemented in ``corpus/_document.py``) objects which contain the textual data in tokenized form, i.e. as a sequence of *tokens* (roughly translated as "words" but other text contents such as numbers and punctuation also form separate tokens). Each token comes along with several *token attributes* which were estimated using the NLP pipeline. Examples for token attributes include the Part-of-Speech tag or the lemma.
+At the core of this module, there is the :class:`~tmtoolkit.corpus.Corpus` class implemented in ``corpus/_corpus.py``.
+It takes documents with raw text as input (i.e. a dict mapping *document labels* to text strings) and applies a SpaCy
+NLP pipeline to it. After that, the corpus consists of  :class:`~tmtoolkit.corpus.Document` (implemented in
+``corpus/_document.py``) objects which contain the textual data in tokenized form, i.e. as a sequence of *tokens*
+(roughly translated as "words" but other text contents such as numbers and punctuation also form separate tokens).
+Each token comes along with several *token attributes* which were estimated using the NLP pipeline. Examples for token
+attributes include the Part-of-Speech tag or the lemma.
 
-The :class:`~tmtoolkit.corpus.Document` class stores the tokens and their "standard" attributes in a *token matrix*. This matrix is of shape *(N, M)* for *N* tokens and with *M* attributes. There are at least 2 or 3 attributes: ``whitespace`` (boolean – is there a whitespace after the token?), ``token`` (the actual token, i.e. "word" type) and optionally ``sent_start`` (only given when sentence information is parsed in the NLP pipeline).
+The :class:`~tmtoolkit.corpus.Document` class stores the tokens and their "standard" attributes in a *token matrix*.
+This matrix is of shape *(N, M)* for *N* tokens and with *M* attributes. There are at least 2 or 3 attributes:
+``whitespace`` (boolean – is there a whitespace after the token?), ``token`` (the actual token, i.e. "word" type) and
+optionally ``sent_start`` (only given when sentence information is parsed in the NLP pipeline).
 
-The token matrix is a *uint64* matrix as it stores all information as *64 bit hash values*. Compared to sequences of strings, this reduces memory usage and allows faster computations and data modifications. E.g., when you transform a token (lets say "Hello" to "hello"), you only do one transformation, calculate one new hash value and replace each occurrence of the old hash with the new hash. The hashes are calculated with SpaCy's `hash_string <https://spacy.io/api/stringstore#hash_string>`_ function. For fast conversion between token/attribute hashes and strings, the mappings are stored in a *bidirectional dictionary* using the `bidict <https://pypi.org/project/bidict/>`_ package. Each column, i.e. each attribute, in the token matrix has a separate bidict in the  ``bimaps`` dictionary that is shared between a corpus and each Document object. Using bidict proved to be *much* faster than using SpaCy's built in `Vocab / StringStore <https://spacy.io/api/stringstore>`_.
+The token matrix is a *uint64* matrix as it stores all information as *64 bit hash values*. Compared to sequences of
+strings, this reduces memory usage and allows faster computations and data modifications. E.g., when you transform a
+token (lets say "Hello" to "hello"), you only do one transformation, calculate one new hash value and replace each
+occurrence of the old hash with the new hash. The hashes are calculated with SpaCy's
+`hash_string <https://spacy.io/api/stringstore#hash_string>`_ function. For fast conversion between token/attribute
+hashes and strings, the mappings are stored in a *bidirectional dictionary* using the
+`bidict <https://pypi.org/project/bidict/>`_ package. Each column, i.e. each attribute, in the token matrix has a
+separate bidict in the  ``bimaps`` dictionary that is shared between a corpus and each Document object. Using bidict
+proved to be *much* faster than using SpaCy's built in `Vocab / StringStore <https://spacy.io/api/stringstore>`_.
 
-Besides "standard" token attributes that come from the SpaCy NLP pipeline, a user may also add custom token attributes. These are stored in each document's :attr:`~tmtoolkit.corpus.Document.custom_token_attrs` dictionary that map a attribute name to a NumPy array. These arrays are of arbitrary type and don't use the hashing approach. Besides token attributes, there are also *document attributes*. These are attributes attached to each document, for example the *document label* (unique document identifier). Custom document attributes can be added, e.g. to record the publication year of a document. Document attributes can also be of any type and are not hashed.
+Besides "standard" token attributes that come from the SpaCy NLP pipeline, a user may also add custom token attributes.
+These are stored in each document's :attr:`~tmtoolkit.corpus.Document.custom_token_attrs` dictionary that map a
+attribute name to a NumPy array. These arrays are of arbitrary type and don't use the hashing approach. Besides token
+attributes, there are also *document attributes*. These are attributes attached to each document, for example the
+*document label* (unique document identifier). Custom document attributes can be added, e.g. to record the publication
+year of a document. Document attributes can also be of any type and are not hashed.
 
-The :class:`~tmtoolkit.corpus.Corpus` class implements a data structure for text corpora with named documents. All these documents are stored in the corpus as :class:`~tmtoolkit.corpus.Document` objects. *Corpus functions* allow to operate on Corpus objects. They are implemented in ``corpus/_corpusfuncs.py``. All corpus functions that transform/modify a corpus, have an ``inplace`` argument, by default set to ``True``. If  ``inplace`` is set to ``True``, the corpus will be directly modified in-place, i.e. modifying the input corpus. If ``inplace`` is set to ``False``, a copy of the input corpus is created and all modifications are applied to this copy. The original input corpus is not altered in that case. The ``corpus_func_inplace_opt`` decorator is used to mark corpus functions with the in-place option.
+The :class:`~tmtoolkit.corpus.Corpus` class implements a data structure for text corpora with named documents. All these
+documents are stored in the corpus as :class:`~tmtoolkit.corpus.Document` objects. *Corpus functions* allow to operate
+on Corpus objects. They are implemented in ``corpus/_corpusfuncs.py``. All corpus functions that transform/modify a
+corpus, have an ``inplace`` argument, by default set to ``True``. If  ``inplace`` is set to ``True``, the corpus will
+be directly modified in-place, i.e. modifying the input corpus. If ``inplace`` is set to ``False``, a copy of the input
+corpus is created and all modifications are applied to this copy. The original input corpus is not altered in that case.
+The ``corpus_func_inplace_opt`` decorator is used to mark corpus functions with the in-place option.
 
-The :class:`~tmtoolkit.corpus.Corpus` class provides parallel processing capabilities for processing large data amounts. This can be controlled with the ``max_workers`` argument. Parallel processing is then enabled at two stages: First, it is simply enabled for the SpaCy NLP pipeline by setting up the pipeline accordingly. Second, a *reusable process pool executor* is created by the means of `loky <https://github.com/joblib/loky/>`_. This process pool is then used in corpus functions whenever parallel execution is beneficial over serial execution. The ``parallelexec`` decorator is used to mark (inner) functions for parallel execution.
+The :class:`~tmtoolkit.corpus.Corpus` class provides parallel processing capabilities for processing large data amounts.
+This can be controlled with the ``max_workers`` argument. Parallel processing is then enabled at two stages: First, it
+is simply enabled for the SpaCy NLP pipeline by setting up the pipeline accordingly. Second, a
+*reusable process pool executor* is created by the means of `loky <https://github.com/joblib/loky/>`_. This process
+pool is then used in corpus functions whenever parallel execution is beneficial over serial execution. The
+``parallelexec`` decorator is used to mark (inner) functions for parallel execution.
 
 
 ``topicmod`` module
@@ -212,7 +263,9 @@ The :class:`~tmtoolkit.corpus.Corpus` class provides parallel processing capabil
 
 This is the central module for computing, evaluating and analyzing topic models.
 
-In ``topicmod/evaluate.py`` there are mainly several evaluation metrics for topic models implemented. Topic models can be computed and evaluated in parallel, the base code for that is in ``topicmod/parallel.py``. Three modules use the base classes from ``topicmod/parallel.py`` to implement interfaces to popular topic modeling packages:
+In ``topicmod/evaluate.py`` there are mainly several evaluation metrics for topic models implemented. Topic models can
+be computed and evaluated in parallel, the base code for that is in ``topicmod/parallel.py``. Three modules use the
+base classes from ``topicmod/parallel.py`` to implement interfaces to popular topic modeling packages:
 
 - ``topicmod/tm_gensim.py`` for `gensim <https://radimrehurek.com/gensim/>`_
 - ``topicmod/tm_lda.py`` for `lda <http://pythonhosted.org/lda/>`_
