@@ -1,13 +1,7 @@
 """
 Common statistics and tools for topic models.
-
-.. [SievertShirley2014] Sievert, C., & Shirley, K. (2014, June). LDAvis: A method for visualizing and interpreting
-                        topics. In Proceedings of the workshop on interactive language learning, visualization, and
-                        interfaces (pp. 63-70).
-
-.. [Chuang2012] J. Chuang, C. Manning, J. Heer. 2012. Termite: Visualization Techniques for Assessing Textual Topic
-                Models
 """
+
 import logging
 
 import numpy as np

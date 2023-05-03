@@ -5,20 +5,20 @@ using the :class:`Corpus` class. This sub-package also provides functions that w
 Text parsing and processing relies on the `SpaCy library <https://spacy.io/>`_ which must be installed when using this
 sub-package.
 
-.. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
+.. codeauthor:: Markus Konrad <post@mkonrad.net>
 """
 
 from importlib.util import find_spec
 
 for pkg in ('spacy', 'bidict', 'loky'):
     if find_spec(pkg) is None:
-        raise RuntimeError(f'the required package "{pkg}" for text processing is not installed; did you install '
-                           f'tmtoolkit with "recommended" or "textproc" option? see '
-                           f'https://tmtoolkit.readthedocs.io/en/latest/install.html for further information')
+        raise ImportError(f'the required package "{pkg}" for text processing is not installed; did you install '
+                          f'tmtoolkit with "recommended" or "textproc" option? see '
+                          f'https://tmtoolkit.readthedocs.io/en/latest/install.html for further information')
 
-from ..tokenseq import strip_tags, numbertoken_to_magnitude, simplify_unicode_chars
+from ..strings import strip_tags, numbertoken_to_magnitude, simplify_unicode_chars
 
-from ._common import DEFAULT_LANGUAGE_MODELS, LANGUAGE_LABELS, simplified_pos
+from ._common import DEFAULT_LANGUAGE_MODELS, LANGUAGE_LABELS, STD_TOKEN_ATTRS, simplified_pos
 from ._document import Document, document_token_attr, document_from_attrs
 from ._corpus import Corpus
 
@@ -39,7 +39,7 @@ from ._corpusfuncs import (
     remove_token_attr, remove_document_attr, builtin_corpora_info, corpus_add_files, corpus_add_folder,
     corpus_add_tabular, corpus_add_zip, corpus_sample, corpus_split_by_token, doc_num_sents, doc_sent_lengths,
     numbers_to_magnitudes, corpus_split_by_paragraph, doc_labels_sample, corpus_retokenize, corpus_unique_chars,
-    corpus_join_documents, find_documents
+    corpus_join_documents, find_documents, token_cooccurrence
 )
 
 if find_spec('nltk') is not None:  # when NLTK is installed

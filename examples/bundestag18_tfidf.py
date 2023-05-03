@@ -17,8 +17,8 @@ German language model for spaCy:
 
 For more information, see the installation instructions: https://tmtoolkit.readthedocs.io/en/latest/install.html
 
-Markus Konrad <markus.konrad@wzb.eu>
-June 2019 / Feb. 2022
+.. codeauthor:: Markus Konrad <post@mkonrad.net>
+.. date:: June 2019 / Feb. 2022
 """
 
 import re

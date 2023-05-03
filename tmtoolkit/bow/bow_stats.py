@@ -1,7 +1,7 @@
 """
-Common statistics from bag-of-words (BoW) matrices.
+Common statistics for bag-of-words (BoW) or sparse word representation models.
 
-.. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
+.. codeauthor:: Markus Konrad <post@mkonrad.net>
 """
 
 import numpy as np
@@ -68,6 +68,9 @@ def codoc_frequencies(dtm, min_val=1, proportions=0):
     Calculate the co-document frequency (aka word co-occurrence) matrix for a document-term matrix `dtm`, i.e. how often
     each pair of tokens occurs together at least `min_val` times in the same document. If `proportions` is True,
     return proportions scaled to the number of documents instead of absolute numbers.
+
+    .. seealso:: See :func:`~tmtoolkit.utils.pairwise_max_table` for a convenient way to get the maximum token
+                 cooccurrences in tabular form.
 
     :param dtm: (sparse) document-term-matrix of size NxM (N docs, M is vocab size) with raw term counts.
     :param min_val: threshold for counting occurrences

@@ -1,151 +1,68 @@
 """
-Module for functions that work with text represented as *token sequences*, e.g. ``["A", "test", "document", "."]``
-and single tokens (i.e. strings).
+Module for functions that work with text represented as *token sequences*, e.g. ``["A", "test", "document", "."]``.
 
 Tokens don't have to be represented as strings -- for many functions, they may also be token hashes (as integers).
 Most functions also accept NumPy arrays instead of lists / tuples.
 
-.. [RoleNadif2011] Role, François & Nadif, Mohamed. (2011). Handling the Impact of Low Frequency Events on
-                   Co-occurrence based Measures of Word Similarity - A Case Study of Pointwise Mutual Information.
-.. [Bouma2009] Bouma, G. (2009). Normalized (pointwise) mutual information in collocation extraction. Proceedings
-               of GSCL, 30, 31-40.
-
-.. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
+.. codeauthor:: Markus Konrad <post@mkonrad.net>
 """
 
+from __future__ import annotations
+
 import itertools
-import math
 import re
-import unicodedata
 from collections import Counter
-from collections.abc import Mapping
-from functools import partial
-from html.parser import HTMLParser
-from typing import Union, List, Any, Optional, Callable, Iterable, Dict, Sequence, Set
+from copy import copy
+from typing import Union, Tuple, List, Iterable, Set, Optional, Callable, Dict, Any, Sequence
 
 import globre
 import numpy as np
+from scipy import sparse
 
-from .types import StrOrInt
-from .utils import flatten_list
+from ._metrics import pmi, pmi2, pmi3, npmi, ppmi
+from ..types import StrOrInt
+from ..utils import empty_chararray, indices_of_matches
 
 
-#%% functions that operate on single string tokens or texts
-
-def numbertoken_to_magnitude(numbertoken: str, char: str = '0', firstchar: str = '1', below_one: str = '0',
-                             zero: str = '0', decimal_sep: str = '.', thousands_sep: str = ',',
-                             drop_sign: bool = False, value_on_conversion_error: Optional[str] = '') -> str:
+def pad_sequence(s: Union[Tuple[StrOrInt, ...], List[StrOrInt], np.ndarray], left: int, right: int,
+                 left_symbol: StrOrInt, right_symbol: StrOrInt, skip_empty: bool = True) \
+        -> Union[Tuple[StrOrInt, ...], List[StrOrInt], np.ndarray]:
     """
-    Convert a string token `numbertoken` that represents a number (e.g. "13", "1.3" or "-1313") to a string token that
-    represents the magnitude of that number by repeating `char` ("10", "1", "-1000" for the mentioned examples). A
-    different first character can be set via `firstchar`. The sign can be dropped via `drop_sign`.
+    Prepend and/or append symbols to token sequence `s`.
 
-    If `numbertoken` cannot be converted to a float, either the value `value_on_conversion_error` is returned or
-    `numbertoken` is returned unchanged if `value_on_conversion_error` is None.
-
-    :param numbertoken: token that represents a number
-    :param char: character string used to represent single orders of magnitude
-    :param firstchar: special character used for first character in the output
-    :param below_one: special character used for numbers with absolute value below 1 (would otherwise return `''`)
-    :param zero: if `numbertoken` evaluates to zero, return this string
-    :param decimal_sep: decimal separator used in `numbertoken`; this is language-specific
-    :param thousands_sep: thousands separator used in `numbertoken`; this is language-specific
-    :param drop_sign: if True, drop the sign in number `numbertoken`, i.e. use absolute value
-    :param value_on_conversion_error: determines return value when `numbertoken` cannot be converted to a number;
-                                      if None, return input `numbertoken` unchanged, otherwise return
-                                      `value_on_conversion_error`
-    :return: string that represents the magnitude of the input or an empty string
+    :param s: sequence of tokens
+    :param left: number of symbols to add to the start
+    :param right: number of symbols to add to the end
+    :param left_symbol: symbol to add to the start
+    :param right_symbol: symbol to add to the end
+    :param skip_empty: if set to True and `s` is an empty sequence, don't apply padding
+    :return: padded sequence of same type as input sequence
     """
-    if decimal_sep != '.':
-        numbertoken = numbertoken.replace(decimal_sep, '.')
+    if left < 0:
+        raise ValueError('`left` must be positive or zero')
+    if right < 0:
+        raise ValueError('`right` must be positive or zero')
 
-    if thousands_sep:
-        numbertoken = numbertoken.replace(thousands_sep, '')
+    if (skip_empty and len(s) == 0) or (left == 0 and right == 0):
+        return copy(s)
 
-    try:
-        number = float(numbertoken)
-    except ValueError:  # catches float conversion error
-        if value_on_conversion_error is None:
-            return numbertoken
+    prepend = [left_symbol] * left
+    append = [right_symbol] * right
+
+    if isinstance(s, tuple):
+        return tuple(prepend) + s + tuple(append)
+    elif isinstance(s, np.ndarray):
+        if s.dtype.kind == 'U':
+            to_dtype = 'str'
         else:
-            return value_on_conversion_error
+            to_dtype = s.dtype
 
-    prefix = '-' if not drop_sign and number < 0 else ''
-    abs_number = abs(number)
-
-    if abs_number < 1:
-        return prefix + below_one
-
-    try:
-        magn = math.floor(math.log10(abs_number)) + 1    # absolute magnitude, sign is discarded here
-    except ValueError:  # catches domain error when taking log10(0)
-        return zero
-
-    if firstchar != char:
-        return prefix + firstchar + char * (magn-1)
-    else:
-        return prefix + char * magn
-
-
-def simplify_unicode_chars(token: str, method: str = 'icu', ascii_encoding_errors: str = 'ignore') -> str:
-    """
-    *Simplify* unicode characters in string `token`, i.e. remove diacritics, underlines and
-    other marks. Requires `PyICU <https://pypi.org/project/PyICU/>`_ to be installed when using
-    ``method="icu"``.
-
-    :param docs: a Corpus object
-    :param token: string to simplify
-    :param method: either ``"icu"`` which uses `PyICU <https://pypi.org/project/PyICU/>`_ for "proper"
-                   simplification or ``"ascii"`` which tries to encode the characters as ASCII; the latter
-                   is not recommended and will simply dismiss any characters that cannot be converted
-                   to ASCII after decomposition
-    :param ascii_encoding_errors: only used if `method` is ``"ascii"``; what to do when a character cannot be
-                                  encoded as ASCII character; can be either ``"ignore"`` (default – replace by empty
-                                  character), ``"replace"`` (replace by ``"???"``) or ``"strict"`` (raise a
-                                  ``UnicodeEncodeError``)
-    :return: simplified string
-    """
-
-    method = method.lower()
-    if method == 'icu':
-        try:
-            from icu import UnicodeString, Transliterator, UTransDirection
-        except ImportError:
-            raise RuntimeError('package PyICU (https://pypi.org/project/PyICU/) must be installed to use this method')
-
-        u = UnicodeString(token)
-        trans = Transliterator.createInstance("NFD; [:M:] Remove; NFC", UTransDirection.FORWARD)
-        trans.transliterate(u)
-        return str(u)
-    elif method == 'ascii':
-        return unicodedata.normalize('NFKD', token).encode('ASCII', errors=ascii_encoding_errors).decode('utf-8')
-    else:
-        raise ValueError('`method` must be either "icu" or "ascii"')
-
-
-def strip_tags(value: str) -> str:
-    """
-    Return the given HTML with all tags stripped and HTML entities and character references converted to Unicode
-    characters.
-
-    Code taken and adapted from https://github.com/django/django/blob/main/django/utils/html.py.
-
-    :param value: input string
-    :return: string without HTML tags
-    """
-    # Note: in typical case this loop executes _strip_once once. Loop condition
-    # is redundant, but helps to reduce number of executions of _strip_once.
-    value = str(value)
-    while '<' in value and '>' in value:
-        new_value = _strip_once(value)
-        if value.count('<') == new_value.count('<'):
-            # _strip_once wasn't able to detect more tags.
-            break
-        value = new_value
-    return value
-
-
-#%% functions that operate on token sequences
+        return np.concatenate((np.array(prepend, dtype=to_dtype),
+                               s,
+                               np.array(append, dtype=to_dtype)),
+                              dtype=to_dtype)
+    else:   # list
+        return prepend + s + append
 
 
 def unique_chars(tokens: Iterable[str]) -> Set[str]:
@@ -173,6 +90,15 @@ def token_lengths(tokens: Union[Iterable[str], np.ndarray]) -> List[int]:
 
 def collapse_tokens(tokens: Union[Iterable[str], np.ndarray], collapse: Union[str, Iterable[str], np.ndarray] = ' ') \
         -> str:
+    """
+    Take a sequence of tokens `tokens` and turn it into a string by joining the tokens using either a single "glue"
+    string or a sequence of "glue" strings in `collapse`.
+
+    :param tokens: list or NumPy array of string tokens
+    :param collapse: either single string or list / NumPy array of "glue" strings where ``collapse[i]`` is the string
+                     to appear after ``tokens[i]``
+    :return: collapsed tokens as string
+    """
     if isinstance(collapse, str):
         return collapse.join(tokens)
     else:
@@ -183,71 +109,135 @@ def collapse_tokens(tokens: Union[Iterable[str], np.ndarray], collapse: Union[st
         return ''.join(interleaved)
 
 
-def pmi(x: np.ndarray, y: np.ndarray, xy: np.ndarray, n_total: Optional[int] = None, logfn: Callable = np.log,
-        k: int = 1, normalize: bool = False) -> np.ndarray:
+def token_hash_convert(tokens: Union[Iterable[Union[str, int]], np.ndarray],
+                       stringstore: dict,
+                       special_tokens: Optional[dict] = None,
+                       collapse: Optional[Union[str, Iterable[str], np.ndarray]] = None,
+                       arr_dtype_for_hashes: str = None) \
+        -> Union[str, Iterable[Union[str, int]], np.ndarray]:
     """
-    Calculate pointwise mutual information measure (PMI) either from probabilities p(x), p(y), p(x, y) given as `x`,
-    `y`, `xy`, or from total counts `x`, `y`, `xy` and additionally `n_total`. Setting `k` > 1 gives PMI^k variants.
-    Setting `normalized` to True gives normalized PMI (NPMI) as in [Bouma2009]_. See [RoleNadif2011]_ for a comparison
-    of PMI variants.
+    Perform token <-> hash conversion on a sequence of tokens `tokens` using the bijection `stringstore`. If `tokens`
+    contains token hashes, the output is a sequence of token strings and if `tokens` contains token strings, the output
+    is a sequence of token hashes. In case the output is a sequence of token strings, these can be collapsed using the
+    `collapse` parameter.
 
-    Probabilities should be such that ``p(x, y) <= min(p(x), p(y))``.
-
-    :param x: probabilities p(x) or count of occurrence of x (interpreted as count if `n_total` is given)
-    :param y: probabilities p(y) or count of occurrence of y (interpreted as count if `n_total` is given)
-    :param xy: probabilities p(x, y) or count of occurrence of x *and* y (interpreted as count if `n_total` is given)
-    :param n_total: if given, `x`, `y` and `xy` are interpreted as counts with `n_total` as size of the sample space
-    :param logfn: logarithm function to use (default: ``np.log`` – natural logarithm)
-    :param k: if `k` > 1, calculate PMI^k variant
-    :param normalize: if True, normalize to range [-1, 1]; gives NPMI measure
-    :return: array with same length as inputs containing (N)PMI measures for each input probability
+    :param tokens: a sequence of tokens either as token strings or token hashes
+    :param stringstore: a bijection mapping strings to hashes and vice versa as implemented in SpaCy's ``StringStore``
+    :param special_tokens: optional bijection for tokens not present or of higher importance than those in `stringstore`
+    :param collapse: either single string or list / NumPy array of "glue" strings where ``collapse[i]`` is the string
+                     to appear after ``tokens[i]``; if this is None, no collapsing is applied, i.e. this function
+                     returns a sequence of converted tokens instead of a string; collapsing can only be applied if
+                     `tokens` is converted to strings and not hashes
+    :param arr_dtype_for_hashes: if `tokens` is an array, assume this dtype for hashes (e.g. 'uint64' if using SpaCy's
+                                 token hashes)
+    :return: converted sequence of tokens or collapsed token string if `collapse` is given
     """
-    if not isinstance(k, int) or k < 1:
-        raise ValueError('`k` must be a strictly positive integer')
 
-    if k > 1 and normalize:
-        raise ValueError('normalization is only implemented for standard PMI with `k=1`')
+    conv = map(lambda t: special_tokens[t] if special_tokens and t in special_tokens else stringstore[t], tokens)
 
-    if n_total is not None:
-        if n_total < 1:
-            raise ValueError('`n_total` must be strictly positive')
-        x = x/n_total
-        y = y/n_total
-        xy = xy/n_total
-
-    pmi_val = logfn(xy) - logfn(x * y)
-
-    if k > 1:
-        return pmi_val - (1-k) * logfn(xy)
-    else:
-        if normalize:
-            return pmi_val / -logfn(xy)
+    if collapse is None:
+        if isinstance(tokens, tuple):
+            return tuple(conv)
+        if isinstance(tokens, np.ndarray):
+            return_strarr = np.issubdtype(tokens.dtype, arr_dtype_for_hashes)
+            if len(tokens) == 0:
+                return empty_chararray() if return_strarr else np.array([], dtype=arr_dtype_for_hashes)
+            else:
+                return np.array(list(conv), dtype='str' if return_strarr else arr_dtype_for_hashes)
         else:
-            return pmi_val
+            return list(conv)
+    else:
+        return collapse_tokens(conv, collapse=collapse)
 
 
-npmi = partial(pmi, k=1, normalize=True)
-pmi2 = partial(pmi, k=2, normalize=False)
-pmi3 = partial(pmi, k=3, normalize=False)
-
-
-def simple_collocation_counts(x: Optional[np.ndarray], y: Optional[np.ndarray], xy: np.ndarray, n_total: Optional[int]):
+def token_collocation_matrix(sentences: List[List[StrOrInt]], min_count: int = 1,
+                             embed_tokens: Optional[Iterable] = None, tokens_as_hashes: bool = False,
+                             return_vocab: bool = False, return_bigrams_with_indices: bool = False) \
+        -> Union[sparse.csr_matrix,
+                 Tuple[sparse.csr_matrix, np.ndarray, np.ndarray],
+                 Tuple[sparse.csr_matrix, List[Tuple, Tuple[int, int]]],
+                 Tuple[sparse.csr_matrix, np.ndarray, np.ndarray, List[Tuple, Tuple[int, int]]]]:
     """
-    "Statistic" function that can be used in :func:`~token_collocations` and will simply return the number of
-    collocations between tokens *x* and *y* passed as `xy`. Mainly useful for debugging purposes.
+    Generate a sparse token collocation matrix from bigrams in `sentences`.
 
-    :param x: unused
-    :param y: unused
-    :param xy: counts for collocations of *x* and *y*
-    :param n_total: total number of tokens (strictly positive)
-    :return: simply returns `xy`
+    .. seealso:: See :func:`~token_collocations` for a similar function that returns a list of collocations sorted by
+                 a statistic score such as PPMI.
+
+    :param sentences: list of sentences containing lists of tokens
+    :param min_count: ignore collocations with number of occurrences below this threshold
+    :param embed_tokens: tokens that, if occurring inside an n-gram, are not counted; see :func:`token_ngrams`
+    :param tokens_as_hashes: if True, assume that tokens in `sentences` are hashes (integers) instead of strings
+    :param return_vocab: additionally return the vocabulary as numpy array for each axis of the matrix
+    :param return_bigrams_with_indices: additionally return a list of bigrams together with a pair of indices of the
+                                        respective bigram into the result matrix
+    :return: a sparse collocation count matrix where the rows and columns represent bigram token pairs and the elements
+             represent their collocation count; if `return_vocab` is True, also return the vocabulary for each matrix
+             axis; if `return_bigrams_with_indices` is True, additionally return a list of bigrams together a pair of
+             indices of the respective bigram into the result matrix
     """
-    return xy.astype(float)
+    if min_count < 0:
+        raise ValueError('`min_count` must be non-negative')
+
+    n_tok = sum(len(sent) for sent in sentences)
+
+    vocab_dtype = 'uint64' if tokens_as_hashes else 'str'
+    empty_mat = sparse.csr_matrix([], dtype='uint32', shape=(1, 1))
+    empty_vocab1 = np.array([], dtype=vocab_dtype)
+    empty_vocab2 = empty_vocab1.copy()
+
+    if return_vocab and return_bigrams_with_indices:
+        empty_res = (empty_mat, empty_vocab1, empty_vocab2, [])
+    elif return_vocab and not return_bigrams_with_indices:
+        empty_res = (empty_mat, empty_vocab1, empty_vocab2)
+    elif not return_vocab and return_bigrams_with_indices:
+        empty_res = (empty_mat, [])
+    else:
+        empty_res = empty_mat
+
+    if n_tok < 2:       # can't possibly have any collocations with fewer than 2 tokens
+        return empty_res
+
+    # count bigram occurrences
+    ngramsize = 2
+    bigrams = Counter()
+    for sent_tokens in sentences:
+        if len(sent_tokens) >= ngramsize:
+            bigrams.update(map(tuple, token_ngrams(sent_tokens, n=ngramsize, join=False, embed_tokens=embed_tokens,
+                                                   keep_embed_tokens=False)))
+
+    if min_count:
+        bigrams = {bg: n for bg, n in bigrams.items() if n >= min_count}
+
+    if not bigrams:    # no bigrams generated (input only consisted of empty string tokens or all below `min_count`)
+        return empty_res
+
+    # split bigrams into tuples of first and second tokens
+    bg_split = tuple(zip(*bigrams.keys()))
+    # produce a sorted tuples of unique tokens per bigram "side"
+    bg_vocab_split = tuple(map(sorted, map(set, bg_split)))
+
+    # turn these tuples into numpy arrays
+    bg_first, bg_second = map(lambda x: np.array(x, dtype=vocab_dtype), bg_split)
+    bg_vocab_first, bg_vocab_second = map(lambda x: np.array(x, dtype=vocab_dtype), bg_vocab_split)
+
+    # create a sparse collocation matrix
+    row_ind = indices_of_matches(bg_first, bg_vocab_first, b_is_sorted=True, check_a_in_b=True)
+    col_ind = indices_of_matches(bg_second, bg_vocab_second, b_is_sorted=True, check_a_in_b=True)
+    mat = sparse.coo_matrix((tuple(bigrams.values()), (row_ind, col_ind)), dtype='uint32').tocsr()
+
+    if return_vocab and return_bigrams_with_indices:
+        return mat, bg_vocab_first, bg_vocab_second, list(zip(bigrams.keys(), zip(row_ind, col_ind)))
+    elif return_vocab and not return_bigrams_with_indices:
+        return mat, bg_vocab_first, bg_vocab_second
+    elif not return_vocab and return_bigrams_with_indices:
+        return mat, list(zip(bigrams.keys(), zip(row_ind, col_ind)))
+    else:
+        return mat
 
 
 def token_collocations(sentences: List[List[StrOrInt]], threshold: Optional[float] = None,
                        min_count: int = 1, embed_tokens: Optional[Iterable] = None,
-                       statistic: Callable = npmi, vocab_counts: Optional[Mapping] = None,
+                       statistic: Callable[[sparse.spmatrix, ...], Union[sparse.spmatrix, np.ndarray]] = ppmi,
                        glue: Optional[str] = None, return_statistic: bool = True, rank: Optional[str] = 'desc',
                        tokens_as_hashes: bool = False, hashes2tokens: Optional[Union[Dict[int, str], dict]] = None,
                        **statistic_kwargs) \
@@ -261,9 +251,9 @@ def token_collocations(sentences: List[List[StrOrInt]], threshold: Optional[floa
     :param min_count: ignore collocations with number of occurrences below this threshold
     :param embed_tokens: tokens that, if occurring inside an n-gram, are not counted; see :func:`token_ngrams`
     :param statistic: function to calculate the statistic measure from the token counts; use one of the
-                      ``[n]pmi`` functions provided in this module or provide your own function which
-                      must accept parameters ``x, y, xy, n_total``; see :func:`~pmi` for more information
-    :param vocab_counts: pass already computed token type counts to prevent computing these again in this function
+                      ``[n|p]pmi`` functions provided in this module or provide your own function which
+                      must accept a sparse matrix ``x`` and return a matrix of the same shape; see :func:`~pmi` for
+                      more information
     :param glue: if not None, provide a string that is used to join the collocation tokens
     :param return_statistic: also return computed statistic
     :param rank: if not None, rank the results according to the computed statistic in ascending (``rank='asc'``) or
@@ -283,54 +273,24 @@ def token_collocations(sentences: List[List[StrOrInt]], threshold: Optional[floa
     # (see https://en.wikipedia.org/wiki/Collocation#Statistically_significant_collocation);
     # this requires an additional threshold comparison relation argument
 
-    if min_count < 0:
-        raise ValueError('`min_count` must be non-negative')
+    mat, bigrams_w_indices = token_collocation_matrix(sentences, min_count=min_count, embed_tokens=embed_tokens,
+                                                      tokens_as_hashes=tokens_as_hashes,
+                                                      return_bigrams_with_indices=True)
 
-    n_tok = sum(len(sent) for sent in sentences)
-
-    if n_tok < 2:       # can't possibly have any collocations with fewer than 2 tokens
+    if mat.nnz == 0:  # empty matrix
         return []
-
-    if vocab_counts is None:
-        vocab_counts = Counter(flatten_list(sentences))
-
-    ngramsize = 2
-    bigrams = []
-    for sent_tokens in sentences:
-        if len(sent_tokens) >= ngramsize:
-            bigrams.extend(token_ngrams(sent_tokens, n=ngramsize, join=False, embed_tokens=embed_tokens,
-                                        keep_embed_tokens=False))
-
-    if tokens_as_hashes:
-        bigrams = np.array(bigrams, dtype='uint64')
-    else:
-        bigrams = np.array(bigrams, dtype='str')
-
-    bigrams, n_bigrams = np.unique(bigrams, return_counts=True, axis=0)
-
-    if min_count > 1:   # filter bigrams
-        mask = n_bigrams >= min_count
-        bigrams = bigrams[mask]
-        n_bigrams = n_bigrams[mask]
-
-    if len(n_bigrams) == 0:       # can't possibly have any collocations with no bigrams after filtering
-        return []
-
-    # first and last token of bigrams
-    bg_first = bigrams[:, 0]
-    bg_last = bigrams[:, 1]
-
-    # num. of occurrences for first and last token of bigrams
-    n_first = np.array([vocab_counts[t] for t in bg_first], dtype=n_bigrams.dtype)
-    n_last = np.array([vocab_counts[t] for t in bg_last], dtype=n_bigrams.dtype)
 
     # apply scoring function
-    scores = statistic(x=n_first, y=n_last, xy=n_bigrams, n_total=n_tok, **statistic_kwargs)
-    assert len(scores) == len(bigrams), 'length of scores array must match number of unique bigrams'
+    scores = statistic(mat, **statistic_kwargs)
+    assert scores.shape == mat.shape, "returned matrix' shape from statistic function must match collocation matrix " \
+                                      "shape"
+    if isinstance(scores, sparse.spmatrix):
+        scores = scores.todok()
 
     # build result
     res = []
-    for bg, s in zip(bigrams, scores):
+    for bg, (i, j) in bigrams_w_indices:
+        s = scores[i, j]
         if hashes2tokens is None:
             bg = tuple(bg)
         else:
@@ -354,7 +314,7 @@ def token_collocations(sentences: List[List[StrOrInt]], threshold: Optional[floa
     return res
 
 
-def token_match(pattern: Any, tokens: Union[List[str], np.ndarray],
+def token_match(pattern: Any, tokens: Union[List[StrOrInt], np.ndarray],
                 match_type: str = 'exact', ignore_case: bool = False, glob_method: str = 'match',
                 inverse: bool = False) -> np.ndarray:
     """
@@ -648,8 +608,8 @@ def token_ngrams(tokens: Sequence, n: int, join: bool = True, join_str: str = ' 
     :param keep_embed_tokens: if True, keep embedded tokens in the result
     :return: list of joined n-gram strings or list of n-grams that are n-sized sequences
     """
-    if n < 2:
-        raise ValueError('`n` must be at least 2')
+    if not isinstance(n, int) or n < 1:
+        raise ValueError('`n` must be a strictly positive integer')
 
     if len(tokens) == 0:
         ng = []
@@ -692,7 +652,7 @@ def token_ngrams(tokens: Sequence, n: int, join: bool = True, join_str: str = ' 
 
 def index_windows_around_matches(matches: np.ndarray, left: int, right: int,
                                  flatten: bool = False, remove_overlaps: bool = True) \
-        -> Union[List[List[int]], np.ndarray]:
+        -> Union[List[List[int]], List[np.ndarray], np.ndarray]:
     """
     Take a boolean 1D array `matches` of length N and generate an array of indices, where each occurrence of a True
     value in the boolean vector at index i generates a sequence of the form:
@@ -711,20 +671,29 @@ def index_windows_around_matches(matches: np.ndarray, left: int, right: int,
     .. code-block:: text
 
         input:
-        #   0      1      2      3     4      5      6      7     8
+        #   0     1      2      3     4      5      6      7     8
         [True, True, False, False, True, False, False, False, True]
         output (matches *highlighted*):
-        [[0, *1*], [0, *1*, 2], [3, *4*, 5], [7, *8*]]
+        [[*0*, 1], [0, *1*, 2], [3, *4*, 5], [7, *8*]]
 
     Example with ``left=1 and right=1, flatten=True, remove_overlaps=True``:
 
     .. code-block:: text
 
         input:
-        #   0      1      2      3     4      5      6      7     8
+        #   0     1      2      3     4      5      6      7     8
         [True, True, False, False, True, False, False, False, True]
         output (matches *highlighted*, other values belong to the respective "windows"):
         [*0*, *1*, 2, 3, *4*, 5, 7, *8*]
+
+    :param matches: 1D boolean input array
+    :param left: index window left side size
+    :param right: index window right side size
+    :param  flatten: if True return flattened NumPy 1D array, otherwise return list of NumPy arrays with one array per
+                     window
+    :param remove_overlaps: if True, remove overlaps in match windows (only applies if `flatten` is set to True)
+    :return: if `flatten` is False, return a list of arrays where each array is an index window into `matches`; if
+             `flatten` is True, return a concatenated NumPy array with the index windows
     """
     if not isinstance(matches, np.ndarray) or matches.dtype != bool:
         raise ValueError('`matches` must be a boolean NumPy array')
@@ -749,34 +718,3 @@ def index_windows_around_matches(matches: np.ndarray, left: int, right: int,
             return window_ind
     else:
         return [w[(w >= 0) & (w < len(matches))] for w in nested_ind]
-
-
-#%% helper functions and classes
-
-
-class _MLStripper(HTMLParser):
-    """
-    Code taken and adapted from https://github.com/django/django/blob/main/django/utils/html.py.
-    """
-    def __init__(self):
-        super().__init__(convert_charrefs=True)
-        self.reset()
-        self.fed = []
-
-    def handle_data(self, d):
-        self.fed.append(d)
-
-    def get_data(self):
-        return ''.join(self.fed)
-
-
-def _strip_once(value):
-    """
-    Internal tag stripping utility used by strip_tags.
-
-    Code taken and adapted from https://github.com/django/django/blob/main/django/utils/html.py.
-    """
-    s = _MLStripper()
-    s.feed(value)
-    s.close()
-    return s.get_data()

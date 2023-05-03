@@ -1,8 +1,8 @@
 # GitHub actions workflow for testing tmtoolkit
-# Runs tests on Ubuntu, MacOS and Windows with Python versions 3.8, 3.9 and 3.10 each, which means 9 jobs are spawned.
+# Runs tests on Ubuntu, MacOS and Windows with Python versions 3.8, 3.9, 3.10, 3.11.
 # Tests are run using tox (https://tox.wiki/).
 #
-# author: Markus Konrad <markus.konrad@wzb.eu>
+# author: Markus Konrad <post@mkonrad.net>
 
 name: run tests
 
@@ -19,12 +19,12 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        python-version: ["3.8", "3.9", "3.10"]
+        python-version: ["3.8", "3.9", "3.10", "3.11"]
         testsuite: ["minimal", "full"]
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - name: set up python ${{ matrix.python-version }}
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v4
         with:
           python-version: ${{ matrix.python-version }}
           cache: 'pip'

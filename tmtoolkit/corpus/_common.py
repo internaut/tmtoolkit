@@ -1,7 +1,7 @@
 """
 Internal module with common functions and constants for text processing in the :mod:`tmtoolkit.corpus` module.
 
-.. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
+.. codeauthor:: Markus Konrad <post@mkonrad.net>
 """
 
 import os
@@ -31,6 +31,11 @@ DEFAULT_LANGUAGE_MODELS = {
     'pl': 'pl_core_news',
     'ro': 'ro_core_news',
     'ru': 'ru_core_news',
+    'hr': 'hr_core_news',
+    'fi': 'fi_core_news',
+    'ko': 'ko_core_news',
+    'sv': 'sv_core_news',
+    'uk': 'uk_core_news',
 }
 
 #: Map two-letter ISO 639-1 language code to language name.
@@ -53,6 +58,11 @@ LANGUAGE_LABELS = {
     'pl': 'polish',
     'ro': 'romanian',
     'ru': 'russian',
+    'hr': 'croatian',
+    'fi': 'finnish',
+    'ko': 'korean',
+    'sv': 'swedish',
+    'uk': 'ukrainian',
 }
 
 BOOLEAN_SPACY_TOKEN_ATTRS = (

@@ -1,7 +1,7 @@
 """
 Convert NIPS data from http://archive.ics.uci.edu/ml/datasets/Bag+of+Words to sparse DTM format stored as pickle file.
 
-Markus Konrad <markus.konrad@wzb.eu>
+.. codeauthor:: Markus Konrad <post@mkonrad.net>
 """
 
 import numpy as np

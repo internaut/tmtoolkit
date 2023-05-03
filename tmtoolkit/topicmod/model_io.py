@@ -1,7 +1,7 @@
 """
 Functions for printing/exporting topic model results.
 
-.. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
+.. codeauthor:: Markus Konrad <post@mkonrad.net>
 """
 import logging
 from collections import OrderedDict
@@ -369,12 +369,9 @@ def save_ldamodel_summary_to_excel(excel_file, topic_word_distrib, doc_topic_dis
                                                         index=row_names)
 
     logger.info(f'generating Excel file "{excel_file}"')
-    excel_writer = pd.ExcelWriter(excel_file)
-
-    for sh_name, sh_data in sheets.items():
-        sh_data.to_excel(excel_writer, sh_name)
-
-    excel_writer.save()
+    with pd.ExcelWriter(excel_file) as excel_writer:
+        for sh_name, sh_data in sheets.items():
+            sh_data.to_excel(excel_writer, sh_name)
 
     return sheets
 

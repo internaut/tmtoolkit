@@ -6,7 +6,11 @@ Installation
 Requirements
 ------------
 
-**tmtoolkit works with Python 3.8 or newer (tested up to Python 3.10).**
+**tmtoolkit works with Python 3.8 or newer (tested up to Python 3.11).**
+
+.. note:: There are two dependencies, that don't work with Python 3.11 so far: *lda* and *wordcloud*. If you want to
+          do topic modeling via LDA and/or want to use word cloud visualizations, you must use Python 3.8 to 3.10 or
+          wait until lda and wordcloud receive updates that make them work under Python 3.11.
 
 Requirements are automatically installed via *pip* as described below. Additional packages can also be installed
 via *pip* for certain use cases (see :ref:`optional_packages`).
@@ -76,7 +80,7 @@ statistics, token sequence operations, topic modeling and utility functions. You
     # alternative installation if you only want to install a minimum set of dependencies
     pip install -U tmtoolkit
 
-.. note:: The tmtoolkit package is about 7MB big, because it contains some example corpora.
+.. note:: The tmtoolkit package is about 10MB big, because it contains some example corpora.
 
 .. _setup:
 
@@ -111,6 +115,7 @@ For additional features, you can install further packages using the following in
 - ``pip install -U tmtoolkit[gensim]`` for topic modeling and additional evaluation metrics with Gensim
 - ``pip install -U tmtoolkit[topic_modeling_eval_extra]`` for topic modeling evaluation metrics ``griffiths_2004`` and
   ``held_out_documents_wallach09`` (see further information below)
+- ``pip install -U tmtoolkit[rinterop]`` for interoperability with R (see `R interop. chapter <rinterop.ipynb>`_)
 
 For LDA evaluation metrics ``griffiths_2004`` and ``held_out_documents_wallach09`` it is necessary to install
 `gmpy2 <https://github.com/aleaxit/gmpy>`_ for multiple-precision arithmetic. This in turn requires installing some C

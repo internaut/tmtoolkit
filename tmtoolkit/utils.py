@@ -1,8 +1,9 @@
 """
 Misc. utility functions.
 
-.. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
+.. codeauthor:: Markus Konrad <post@mkonrad.net>
 """
+from __future__ import annotations
 
 import codecs
 import logging
@@ -10,6 +11,7 @@ import os
 import pickle
 import random
 from collections import Counter
+from importlib.util import find_spec
 from inspect import signature
 from typing import Union, List, Any, Optional, Sequence, Dict, Callable, Tuple, Iterable
 
@@ -208,7 +210,7 @@ def as_chararray(x: Union[np.ndarray, Sequence]) -> np.ndarray:
     """
     if len(x) > 0:
         if isinstance(x, np.ndarray):
-            if np.issubdtype(x.dtype, str):
+            if x.dtype.kind == 'U':
                 return x.copy()
             else:
                 return x.astype(str)
@@ -217,6 +219,51 @@ def as_chararray(x: Union[np.ndarray, Sequence]) -> np.ndarray:
         return np.array(x, dtype=str)
     else:
         return empty_chararray()
+
+
+numpy_unicode_bytes = np.dtype('U1').itemsize
+
+
+def chararray_elem_size(x: np.ndarray) -> int:
+    """
+    Return the reserved size of each element in a NumPy unicode character array `x`, which is the maximum character
+    length of all elements in `x`, but at least 1. E.g. if ``x.dtype`` is ``'<U5'``, this function will return 5.
+
+    :param x: NumPy unicode character array
+    :return: reserved size of each element
+    """
+    if isinstance(x, np.ndarray) and x.dtype.kind == 'U':
+        return x.itemsize // numpy_unicode_bytes
+    else:
+        raise ValueError('`x` must be a NumPy unicode character array')
+
+
+def indices_of_matches(a: np.ndarray, b: np.ndarray, b_is_sorted: bool = False, check_a_in_b: bool = False) \
+        -> np.ndarray:
+    """
+    Return the indices into 1D array `b` where elements in 1D array `a` equal an element in `b`. E.g.: Suppose `b` is a
+    vocabulary like ``[13, 10, 12, 8]`` and `a` is a sequence of tokens ``[12, 13]``. Then ``indices_of_matches(a, b)``
+    will return ``[2, 0]`` since first element in `a` equals ``b[2]`` and the second element in `a` equals ``b[0]``.
+
+    :param a: 1D array which will be searched in `b`
+    :param b: 1D array of elements to match against; result will produce indices into this array; should have same
+              dtype as `a`
+    :param b_is_sorted: set this to True if you're sure that `b` is sorted; then a shortcut will be used
+    :param check_a_in_b: if True then check if all elements in `a` exist in `b`; if this is not the case, raise an
+                         exception
+    :return: 1D array of indices; length equals the length of `a`
+    """
+
+    if check_a_in_b and np.any(~np.in1d(a, b)):
+        raise ValueError('at least one element in `a` does not exist in `b`')
+
+    if b_is_sorted:  # shortcut
+        res = np.searchsorted(b, a)
+    else:
+        b_sorter = np.argsort(b)
+        res = b_sorter[np.searchsorted(b, a, sorter=b_sorter)]
+
+    return res
 
 
 def mat2d_window_from_indices(mat: np.ndarray,
@@ -258,10 +305,38 @@ def mat2d_window_from_indices(mat: np.ndarray,
         return view
 
 
+def partial_sparse_log(x: sparse.spmatrix, logfn: Callable[[np.ndarray], np.ndarray] = np.log) -> sparse.spmatrix:
+    """
+    Apply logarithm function `logfn` to all non-zero elements in sparse matrix `x`.
+
+    .. note:: Applying :math:`\log(x)` only to non-zero elements in :math:`x` does not produce mathematically correct
+              results, since :math:`\log(0)` is not defined (but :math:`\log(x)` approaches minus infinity if :math:`x`
+              goes toward 0). However, if you further process a matrix `x`, e.g. by replacing negative values with 0
+              as for example in the PPMI calculation, this function is still useful.
+
+    :param x: a sparse matrix
+    :param logfn: a logarithm function that accepts a numpy array and returns a numpy array
+    :return: a sparse matrix with `logfn` applied to all non-zero elements
+    """
+    input_fmt = x.getformat()
+
+    if input_fmt != 'coo':
+        x = x.tocoo()
+
+    x.data = logfn(x.data)
+    x.eliminate_zeros()
+
+    if input_fmt != 'coo':
+        return x.asformat(input_fmt)
+    else:
+        return x
+
+
 def combine_sparse_matrices_columnwise(matrices: Sequence,
-                                       col_labels: Sequence[StrOrInt],
-                                       row_labels: Sequence[str] = None,
-                                       dtype: Optional[Union[str, np.dtype]] = None) \
+                                       col_labels: Sequence[Sequence[StrOrInt]],
+                                       row_labels: Sequence[Sequence[str]] = None,
+                                       dtype: Optional[Union[str, np.dtype]] = None,
+                                       dtype_cols: Optional[Union[str, np.dtype]] = None) \
         -> Union[Tuple[csr_matrix, np.ndarray], Tuple[csr_matrix, np.ndarray, np.ndarray]]:
     """
     Given a sequence of sparse matrices in `matrices` and their corresponding column labels in `col_labels`, stack these
@@ -298,13 +373,14 @@ def combine_sparse_matrices_columnwise(matrices: Sequence,
 
     The resulting columns will always be sorted in ascending order.
 
-    Additionally you can pass a sequence of row labels for each matrix via `row_labels`. This will also sort the rows in
-    ascending order according to the row labels.
+    Additionally, you can pass a sequence of row labels for each matrix via `row_labels`. This will also sort the rows
+    in ascending order according to the row labels.
 
     :param matrices: sequence of sparse matrices
     :param col_labels: column labels for each matrix in `matrices`; may be sequence of strings or integers
     :param row_labels: optional sequence of row labels for each matrix in `matrices`
     :param dtype: optionally specify the dtype of the resulting sparse matrix
+    :param dtype_cols: optionally specify the dtype for the column labels
     :return: a tuple with (1) combined sparse matrix in CSR format; (2) column labels of the matrix; (3) optionally
              row labels of the matrix if `row_labels` is not None.
     """
@@ -344,7 +420,7 @@ def combine_sparse_matrices_columnwise(matrices: Sequence,
         all_row_labels = None
 
     # sort the column names
-    all_cols = np.array(sorted(all_cols))
+    all_cols = np.array(sorted(all_cols), dtype=dtype_cols)
     n_cols = len(all_cols)
 
     # iterate through the matrices and their corresponding column names
@@ -379,7 +455,102 @@ def combine_sparse_matrices_columnwise(matrices: Sequence,
         return res.tocsr(), all_cols
 
 
+def pairwise_max_table(m: Union[np.ndarray, sparse.spmatrix, pd.DataFrame],
+                       labels: Optional[Sequence] = None,
+                       output_columns: Sequence[str] = ('x', 'y', 'value'),
+                       sort: Optional[Union[str, bool]] = True,
+                       skip_zeros: bool = False) -> pd.DataFrame:
+    """
+    Given a symmetric or triangular matrix or dataframe `m` in which each entry ``m[i,j]`` denotes some metric between a
+    pair ``(i, j)``, this function takes the maximum entry for each row and outputs the result as dataframe. This will
+    result in a table containing the maximum of each pair ``i`` and ``j``.
+
+    :param m: symmetric or triangular matrix or dataframe; can be a sparse matrix
+    :param labels: sequence of pair labels; if `m` is a dataframe, the labels will be taken from its column names
+    :param output_columns: names of columns in output dataframe
+    :param sort: optionally sort by this column; by default will sort by last column in `output_columns` in descending
+           order; pass a string to specify the column and prepend by "-" to indicate descending sorting order, e.g.
+           "-value"
+    :param skip_zeros: don't store pair entries with value zero in the result
+    :return: dataframe with pair maxima
+    """
+
+    if m.ndim != 2 or m.shape[0] != m.shape[1]:
+        raise ValueError('`m` must be a square matrix or dataframe')
+
+    if labels is not None and len(labels) != m.shape[0]:
+        raise ValueError('if `labels` is given, its length must match the dimensions of `m`')
+
+    if isinstance(m, pd.DataFrame):
+        if labels is None:
+            labels = m.columns.tolist()
+        m = m.to_numpy()
+
+    if len(output_columns) != 3:
+        raise ValueError('`output_columns` must contain 3 column names')
+
+    if sort is True:
+        sort = '-' + output_columns[-1]
+    elif sort is None:
+        sort = False
+    elif not isinstance(sort, (bool, str)):
+        raise ValueError('`sort` must be either None, a boolean or a string value')
+
+    if sort:
+        nopre_sort = sort[1:] if sort.startswith('-') else sort
+        if nopre_sort not in output_columns:
+            raise ValueError('if `sort` is given as string, it must be one of the items in `output_columns`')
+
+    maxima = []
+    if m.shape[0] > 0:
+        if sparse.issparse(m):
+            max_indices = np.asarray(np.argmax(m, axis=1))   # keepdims arg not supported
+            if max_indices.ndim > 1:
+                max_indices = max_indices[:, 0]
+        else:
+            max_indices = np.asarray(np.argmax(m, axis=1, keepdims=True))[:, 0]
+
+        assert len(max_indices) == m.shape[0]
+        for i, j in enumerate(max_indices):
+            m_ij = m[i, j]
+            if not skip_zeros or m_ij > 0:
+                if labels is None:
+                    lbl_i = i
+                    lbl_j = j
+                else:
+                    lbl_i = labels[i]
+                    lbl_j = labels[j]
+                maxima.append([lbl_i, lbl_j, m_ij])
+
+    return sorted_df(pd.DataFrame(maxima, columns=output_columns), sort=sort or None)
+
+
 #%% misc functions
+
+
+def sorted_df(df: pd.DataFrame, sort: Optional[str] = None, **kwargs) -> pd.DataFrame:
+    """
+    Sort a dataframe `df` by column `sort` if `sort` is not None. Otherwise, keep `df` unchanged.
+
+    :param df: input dataframe
+    :param sort: optionally sort by this column; prepend by "-" to indicate descending sorting order, e.g. "-value"
+    :param kwargs: optional arguments passed to ``pandas.DataFrame.sort_values``
+    :return: optionally sorted dataframe
+    """
+    inplace = kwargs.pop('inplace', False)
+
+    if sort is not None:
+        if sort.startswith('-'):
+            asc = False
+            sort = sort[1:]
+        else:
+            asc = True
+        return df.sort_values(by=sort, ascending=asc, inplace=inplace, **kwargs)
+    else:
+        if inplace:
+            return df
+        else:
+            return df.copy()
 
 
 def dict2df(data: dict, key_name: str = 'key', value_name: str = 'value', sort: Optional[str] = None) -> pd.DataFrame:
@@ -402,16 +573,7 @@ def dict2df(data: dict, key_name: str = 'key', value_name: str = 'value', sort: 
     if key_name == value_name:
         raise ValueError('`key_name` and `value_name` must differ')
 
-    df = pd.DataFrame({key_name: data.keys(), value_name: data.values()})
-    if sort is not None:
-        if sort.startswith('-'):
-            asc = False
-            sort = sort[1:]
-        else:
-            asc = True
-        return df.sort_values(by=sort, ascending=asc)
-    else:
-        return df
+    return sorted_df(pd.DataFrame({key_name: data.keys(), value_name: data.values()}), sort=sort)
 
 
 def applychain(funcs: Iterable[Callable], initial_arg: Any) -> Any:
@@ -571,3 +733,174 @@ def split_func_args(fn: Callable, args: Dict[str, Any]) -> Tuple[Dict[str, Any],
 
     return {k: v for k, v in args.items() if k in fn_argnames},\
            {k: v for k, v in args.items() if k not in fn_argnames}
+
+
+def check_context_size(context_size: Union[int, Tuple[int, int], List[int]]) -> Tuple[int, int]:
+    """
+    Check a context size for validity. The context size must be given as integer for a symmetric context size or as
+    tuple (left, right) and must contain at least one strictly positive value.
+
+    :param context_size: either scalar int or tuple/list (left, right) -- number of surrounding tokens; if scalar,
+                         then it is a symmetric surrounding, otherwise can be asymmetric
+    :return: tuple of (left, right) context size
+    """
+    if isinstance(context_size, int):
+        context_size = (context_size, context_size)
+    elif not isinstance(context_size, (list, tuple)):
+        raise ValueError('`context_size` must be integer or list/tuple')
+
+    if len(context_size) != 2:
+        raise ValueError('`context_size` must be list/tuple of length 2')
+
+    if not all(isinstance(s, int) for s in context_size) \
+            or any(s < 0 for s in context_size) \
+            or all(s == 0 for s in context_size):
+        raise ValueError('`context_size` must contain non-negative integer values and at least one strictly positive '
+                         'value')
+
+    return tuple(context_size)
+
+
+#%% R interoperability
+
+
+if find_spec('rpy2') is not None:
+    # silence R console writes (but store original functions for manual restoring as `rpy2_default_*`
+    import rpy2.rinterface_lib.callbacks
+
+    rpy2_default_consolewrite_warnerror = rpy2.rinterface_lib.callbacks.consolewrite_warnerror
+    rpy2.rinterface_lib.callbacks.consolewrite_warnerror = (lambda *args: None)
+    rpy2_default_consolewrite_print = rpy2.rinterface_lib.callbacks.consolewrite_print
+    rpy2.rinterface_lib.callbacks.consolewrite_print = (lambda *args: None)
+    rpy2_default_showmessage = rpy2.rinterface_lib.callbacks.showmessage
+    rpy2.rinterface_lib.callbacks.showmessage = (lambda *args: None)
+
+    import rpy2.robjects as robjects
+    from rpy2.robjects.packages import importr
+    from rpy2.robjects.numpy2ri import numpy2rpy #, rpy2py_floatvector, rpy2py_intvector
+    from rpy2.robjects.methods import RS4
+
+    r_matrix = importr('Matrix')
+    save_rds = robjects.r['saveRDS']
+    read_rds = robjects.r['readRDS']
+
+    def _dimnames_from_r_mat(x: Union[robjects.vectors.FloatMatrix, robjects.vectors.IntMatrix, RS4]) \
+            -> Tuple[Optional[List[str]], Optional[List[str]]]:
+        rownames = None
+        colnames = None
+
+        try:
+            if hasattr(x, 'dimnames'):
+                dimnames = x.dimnames
+            else:
+                dimnames = list(x.do_slot('Dimnames'))
+            rowslot, colslot = dimnames
+            if rowslot:
+                rownames = list(rowslot)
+            if colslot:
+                colnames = list(colslot)
+        except LookupError:
+            pass
+
+        return rownames, colnames
+
+
+    def mat_to_r(m: np.ndarray, rownames: Optional[List[str]] = None, colnames: Optional[List[str]] = None) \
+            -> Union[robjects.vectors.FloatMatrix, robjects.vectors.IntMatrix]:
+        """
+        Convert a NumPy matrix `m` to an R matrix.
+
+        :param m: NumPy matrix
+        :param rownames: optional list of strings for row names
+        :param colnames: optional list of strings for column names
+        :return: rpy2 float or integer matrix
+        """
+
+        if m.ndim != 2:
+            raise ValueError('`m` must be matrix, i.e. a NumPy array with ndim = 2')
+
+        return robjects.r.matrix(data=numpy2rpy(m), nrow=m.shape[0], dimnames=[rownames or [], colnames or []])
+
+
+    def mat_from_r(m: Union[robjects.vectors.FloatMatrix, robjects.vectors.IntMatrix],
+                   return_dimnames: bool = False) \
+            -> Union[np.ndarray, Tuple[np.ndarray, Optional[List[str]]], Optional[List[str]]]:
+        """
+        Convert an R matrix `m` to a NumPy matrix.
+
+        :param m: rpy2 float or integer matrix
+        :param return_dimnames: if True, return row and column names as string lists
+        :return: NumPy matrix of respective type
+        """
+        # if isinstance(m, robjects.vectors.IntMatrix):
+        #     pymat = rpy2py_intvector(m)
+        # else:
+        #     pymat = rpy2py_floatvector(m)
+
+        pymat = np.array(m, dtype='int64' if isinstance(m, robjects.vectors.IntMatrix) else 'float64')
+
+        if return_dimnames:
+            rownames, colnames = _dimnames_from_r_mat(m)
+            return pymat, rownames, colnames
+        else:
+            return pymat
+
+
+    def sparsemat_to_r(s: sparse.spmatrix,
+                       rownames: Optional[List[str]] = None,
+                       colnames: Optional[List[str]] = None) -> RS4:
+        """
+        Convert a SciPy sparse matrix `s` to an R sparse matrix.
+
+        :param s: sparse matrix
+        :param rownames: optional list of strings for row names
+        :param colnames: optional list of strings for column names
+        :return: rpy2 RS4 object of the sparse matrix in "CSC" format
+        """
+        args = {}
+        if sparse.isspmatrix_csr(s):
+            args['j'] = numpy2rpy(s.indices+1)   # row indices
+        else:
+            if not sparse.isspmatrix_csc(s):
+                s = s.tocsc(s)
+            args['i'] = numpy2rpy(s.indices+1)   # column indices
+
+        args['p'] = numpy2rpy(s.indptr)  # index pointer
+        if len(s.data) > 0:
+            # non-zero elements
+            args['x'] = robjects.FloatVector(s.data)
+
+        return r_matrix.sparseMatrix(**args,
+                                     dims=robjects.IntVector(s.shape),
+                                     dimnames=[rownames or [], colnames or []])
+
+
+    def sparsemat_from_r(s: RS4, return_dimnames: bool = False) \
+            -> Union[sparse.csc_matrix, Tuple[sparse.csc_matrix, Optional[List[str]]], Optional[List[str]]]:
+        """
+        Convert an R sparse matrix `s` in "CSC" format to a SciPy sparse matrix in "CSC" format.
+
+        .. note:: The returned matrix has always the data type float, even when `s` was originally constructed from
+                  integers.
+
+        :param s: rpy2 RS4 object with sparse matrix in "CSC" format
+        :param return_dimnames: if True, return row and column names as string lists
+        :return: SciPy sparse matrix in "CSC" format; if return_dimnames is True, return a triplet (sparse matrix,
+                 row names, column names)
+        """
+        i = np.array(s.do_slot('i'))   # column indices
+        p = np.array(s.do_slot('p'))   # index pointer
+        try:
+            # data in slot "x" is always stored as float -> can't recover integer matrices
+            x = np.array(s.do_slot('x'))   # non-zero elements
+        except LookupError:
+            # sparse matrix has no non-zero elements
+            x = np.array([], dtype='float')
+
+        m = sparse.csc_matrix((x, i, p), shape=tuple(s.do_slot('Dim')))
+
+        if return_dimnames:
+            rownames,colnames = _dimnames_from_r_mat(s)
+            return m, rownames, colnames
+        else:
+            return m

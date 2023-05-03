@@ -1,16 +1,16 @@
 """
 A minimal example to showcase a few features of tmtoolkit.
 
-Markus Konrad <markus.konrad@wzb.eu>
-Feb. 2022
+.. codeauthor:: Markus Konrad <post@mkonrad.net>
+.. date:: Feb. 2022
 """
 
 from tmtoolkit.corpus import Corpus, tokens_table, lemmatize, to_lowercase, dtm
 from tmtoolkit.bow.bow_stats import tfidf, sorted_terms_table
 
 
-# load built-in sample dataset and use 4 worker processes
-corp = Corpus.from_builtin_corpus('en-News100', max_workers=4)
+# load built-in sample dataset and use all possible worker processes
+corp = Corpus.from_builtin_corpus('en-News100', max_workers=1.0)
 
 # investigate corpus as dataframe
 toktbl = tokens_table(corp)

@@ -3,7 +3,7 @@ Tests for tmtoolkit.corpus module.
 
 Please see the special notes under "tests setup".
 
-.. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
+.. codeauthor:: Markus Konrad <post@mkonrad.net>
 """
 
 import math
@@ -20,11 +20,13 @@ import numpy as np
 import pandas as pd
 import pytest
 from hypothesis import given, strategies as st, settings
+from scipy import sparse
 
 if any(find_spec(pkg) is None for pkg in ('spacy', 'bidict', 'loky')):
     pytest.skip("skipping tmtoolkit.corpus tests (required packages not installed)", allow_module_level=True)
 
 import spacy
+from spacy.strings import hash_string
 from spacy.tokens import Doc
 from spacy.util import get_installed_models
 from scipy.sparse import csr_matrix
@@ -34,12 +36,14 @@ from tmtoolkit.utils import flatten_list
 from tmtoolkit.corpus._common import LANGUAGE_LABELS, TOKENMAT_ATTRS, STD_TOKEN_ATTRS
 TOKENMAT_ATTRS = TOKENMAT_ATTRS - {'whitespace', 'token', 'sent_start'}
 from tmtoolkit import corpus as c
-from ._testtools import strategy_str_str_dict_printable
+from tmtoolkit.corpus._corpusfuncs import _token_cooccurrence_matrix
+from ._testtools import strategy_str_str_dict_printable, strategy_lists_of_int_tokens, strategy_lists_of_tokens
 from ._testtextdata import textdata_sm
 
-DATADIR = os.path.join('tests', 'data')
-DATADIR_GUTENB = os.path.join(DATADIR, 'gutenberg')
-DATADIR_WERTHER = os.path.join(DATADIR_GUTENB, 'werther')
+ROOT = os.path.dirname(__file__)
+DATADIR = os.path.join(ROOT, 'data')
+DATADIR_GUTENB = os.path.join(ROOT, DATADIR, 'gutenberg')
+DATADIR_WERTHER = os.path.join(ROOT ,DATADIR_GUTENB, 'werther')
 
 installed_lang = set(model[:2] for model in get_installed_models())
 textdata_en = textdata_sm['en']
@@ -498,10 +502,9 @@ def test_doc_tokens_hypothesis(corpora_en_serial_and_parallel_module, **args):
 
                     for v in res.values():
                         if len(v) > 0:
-                            assert np.issubdtype(v['token'].dtype,
-                                                 np.uint64 if args['tokens_as_hashes'] else np.dtype('O'))
+                            assert v['token'].dtype.kind == ('u' if args['tokens_as_hashes'] else 'O')
                             if args['sentences']:
-                                assert np.issubdtype(v['sent'].dtype, 'int')
+                                assert v['sent'].dtype.kind == 'i'
                                 assert np.min(v['sent']) == 0
 
                     res_tokens = {}
@@ -646,7 +649,8 @@ def test_doc_num_sents(corpora_en_serial_and_parallel_module, select, as_table):
         'empty': 0,
         'small1': 1,
         'unicode1': 1,
-        'unicode2': 1,
+#        'unicode2': 1,   # a regression in the SpaCy model en_core_web_sm v3.3.0 causes to wrongly segment this into
+#                           to 2 sentences, so we skip this for now
         'NewsArticles-2': 19,
     }
 
@@ -741,27 +745,39 @@ def test_doc_labels_sample(corpora_en_serial_and_parallel_module, n):
 @settings(deadline=None)
 @given(collapse=st.sampled_from([None, ' ', '__']),
        select=st.sampled_from([None, 'empty', 'small2', 'nonexistent', ['small1', 'small2'], []]),
+       by_attr=st.sampled_from([None, 'pos', 'lemma']),
        as_table=st.sampled_from([False, True, 'text']))
-def test_doc_texts(corpora_en_serial_and_parallel_module, collapse, select, as_table):
+def test_doc_texts(corpora_en_serial_and_parallel_module, collapse, select, by_attr, as_table):
     expected = {
-        ' ': {
-            'empty': '',
-            'small1': 'the',
-            'small2': 'This is a small example document .'
+        None: {
+            ' ': {
+                'empty': '',
+                'small1': 'the',
+                'small2': 'This is a small example document .'
+            },
+            '__': {
+                'empty': '',
+                'small1': 'the',
+                'small2': 'This__is__a__small__example__document__.'
+            }
         },
-        '__': {
-            'empty': '',
-            'small1': 'the',
-            'small2': 'This__is__a__small__example__document__.'
+        'pos': {
+            ' ': {'empty': '', 'small1': 'PRON', 'small2': 'PRON AUX DET ADJ NOUN NOUN PUNCT'},
+            '__': {
+                'empty': '',
+                'small1': 'PRON',
+                'small2': 'PRON__AUX__DET__ADJ__NOUN__NOUN__PUNCT'
+            }
         }
     }
+    args = dict(select=select, by_attr=by_attr, collapse=collapse, as_table=as_table)
 
     for corp in corpora_en_serial_and_parallel_module:
         if select == 'nonexistent' or (select not in (None, []) and len(corp) == 0):
             with pytest.raises(KeyError):
-                c.doc_texts(corp, select=select, collapse=collapse, as_table=as_table)
+                c.doc_texts(corp, **args)
         else:
-            res = c.doc_texts(corp, select=select, collapse=collapse, as_table=as_table)
+            res = c.doc_texts(corp, **args)
 
             if as_table is False:
                 assert isinstance(res, dict)
@@ -772,11 +788,10 @@ def test_doc_texts(corpora_en_serial_and_parallel_module, collapse, select, as_t
 
                 for lbl, txt in res.items():
                     assert isinstance(txt, str)
-                    if collapse is None:
+                    if collapse is None and by_attr is None:
                         assert txt == textdata_en[lbl]
-                    else:
-                        if lbl in expected[collapse]:
-                            assert txt == expected[collapse][lbl]
+                    elif collapse is not None and by_attr in expected and lbl in expected[by_attr][collapse]:
+                        assert txt == expected[by_attr][collapse][lbl]
             else:
                 assert isinstance(res, pd.DataFrame)
                 if select is None:
@@ -785,44 +800,46 @@ def test_doc_texts(corpora_en_serial_and_parallel_module, collapse, select, as_t
                     assert set(res['doc']) == ({select} if isinstance(select, str) else set(select))
 
 
-
 @settings(deadline=None)
 @given(proportions=st.sampled_from([0, 1, 2]),
        select=st.sampled_from([None, 'empty', 'small2', 'nonexistent', ['small1', 'small2'], []]),
+       by_attr=st.sampled_from([None, 'pos', 'lemma']),
        as_table=st.sampled_from([False, True, 'freq']))
-def test_doc_frequencies(corpora_en_serial_and_parallel_module, proportions, select, as_table):
+def test_doc_frequencies(corpora_en_serial_and_parallel_module, proportions, select, by_attr, as_table):
+    args = dict(select=select, by_attr=by_attr, proportions=proportions, as_table=as_table)
+
     for corp in corpora_en_serial_and_parallel_module:
         if select == 'nonexistent' or (select not in (None, []) and len(corp) == 0):
             with pytest.raises(KeyError):
-                c.doc_frequencies(corp, select=select, proportions=proportions, as_table=as_table)
+                c.doc_frequencies(corp, **args)
         else:
-            res = c.doc_frequencies(corp, select=select, proportions=proportions, as_table=as_table)
+            res = c.doc_frequencies(corp, **args)
 
             if as_table is False:
                 assert isinstance(res, dict)
-                assert set(res.keys()) == c.vocabulary(corp, select=select, sort=False)
+                assert set(res.keys()) == c.vocabulary(corp, select=select, by_attr=by_attr, sort=False)
 
                 if len(corp) > 0 and select not in ('empty', []):
                     if proportions == 1:
                         # proportions
                         assert all([0 < v <= 1 for v in res.values()])
-                        if select is None:
+                        if select is None and by_attr is None:
                             assert np.isclose(res['the'], 5/9)
                     elif proportions == 2:
                         # log proportions
                         assert all([v <= 0 for v in res.values()])
                         assert all([0 < 10**v <= 1 for v in res.values()])
-                        if select is None:
+                        if select is None and by_attr is None:
                             assert np.isclose(res['the'], math.log10(5/9))
                     else:
                         # counts
                         assert all([0 < v < len(corp) for v in res.values()])
                         assert any([v > 0 for v in res.values()])
-                        if select is None:
+                        if select is None and by_attr is None:
                             assert res['the'] == 5
             else:
                 assert isinstance(res, pd.DataFrame)
-                assert set(res['token']) == c.vocabulary(corp, select=select, sort=False)
+                assert set(res['token']) == c.vocabulary(corp, by_attr=by_attr, select=select, sort=False)
 
 
 @pytest.mark.skipif('en_core_web_md' not in spacy.util.get_installed_models(),
@@ -930,14 +947,15 @@ def test_spacydocs(corpora_en_serial_and_parallel_also_w_vectors_module, select,
 
 @settings(deadline=None)
 @given(select=st.sampled_from([None, 'empty', 'small2', 'nonexistent', ['small1', 'small2'], []]),
+       by_attr=st.sampled_from([None, 'pos', 'lemma']),
        tokens_as_hashes=st.booleans(),
        force_unigrams=st.booleans(),
        sort=st.booleans(),
        convert_uint64hashes=st.booleans())
-def test_vocabulary_hypothesis(corpora_en_serial_and_parallel_module, select, tokens_as_hashes, force_unigrams, sort,
-                               convert_uint64hashes):
-    kwargs = dict(select=select, tokens_as_hashes=tokens_as_hashes, force_unigrams=force_unigrams, sort=sort,
-                  convert_uint64hashes=convert_uint64hashes)
+def test_vocabulary_hypothesis(corpora_en_serial_and_parallel_module, select, by_attr, tokens_as_hashes, force_unigrams,
+                               sort, convert_uint64hashes):
+    kwargs = dict(select=select, by_attr=by_attr, tokens_as_hashes=tokens_as_hashes, force_unigrams=force_unigrams,
+                  sort=sort, convert_uint64hashes=convert_uint64hashes)
 
     for corp in corpora_en_serial_and_parallel_module:
         if select == 'nonexistent' or (select not in (None, []) and len(corp) == 0):
@@ -958,15 +976,16 @@ def test_vocabulary_hypothesis(corpora_en_serial_and_parallel_module, select, to
                 else:
                     assert len(res) > 0
 
-                if select == 'small2' and not tokens_as_hashes:
+                if select == 'small2' and not tokens_as_hashes and not by_attr:
                     assert set(res) == {'This', 'is', 'a', 'small', 'example', 'document', '.'}
 
                 if select != 'empty':
-                    corp_flat = c.corpus_tokens_flattened(corp, select=select, tokens_as_hashes=tokens_as_hashes)
+                    corp_flat = c.corpus_tokens_flattened(corp, select=select, by_attr=by_attr,
+                                                          tokens_as_hashes=tokens_as_hashes)
                     assert all(t in corp_flat for t in res)
 
                 if not convert_uint64hashes and tokens_as_hashes and select is None:
-                    assert all([np.issubdtype(t.dtype, 'uint64') for t in res])
+                    assert all(t.dtype.kind == 'u' for t in res)
                 else:
                     if tokens_as_hashes:
                         expect_type = int
@@ -978,14 +997,15 @@ def test_vocabulary_hypothesis(corpora_en_serial_and_parallel_module, select, to
 
 @settings(deadline=None)
 @given(select=st.sampled_from([None, 'empty', 'small2', 'nonexistent', ['small1', 'small2'], []]),
+       by_attr=st.sampled_from([None, 'pos', 'lemma']),
        proportions=st.sampled_from([0, 1, 2]),
        tokens_as_hashes=st.booleans(),
        force_unigrams=st.booleans(),
        convert_uint64hashes=st.booleans(),
        as_table=st.sampled_from([False, True, 'freq']))
-def test_vocabulary_counts(corpora_en_serial_and_parallel_module, select, proportions, tokens_as_hashes, force_unigrams,
-                           convert_uint64hashes, as_table):
-    kwargs = dict(select=select, proportions=proportions, tokens_as_hashes=tokens_as_hashes,
+def test_vocabulary_counts(corpora_en_serial_and_parallel_module, select, by_attr, proportions, tokens_as_hashes,
+                           force_unigrams, convert_uint64hashes, as_table):
+    kwargs = dict(select=select, by_attr=by_attr, proportions=proportions, tokens_as_hashes=tokens_as_hashes,
                   force_unigrams=force_unigrams, convert_uint64hashes=convert_uint64hashes, as_table=as_table)
 
     for corp in corpora_en_serial_and_parallel_module:
@@ -994,7 +1014,7 @@ def test_vocabulary_counts(corpora_en_serial_and_parallel_module, select, propor
                 c.vocabulary_counts(corp, **kwargs)
         else:
             res = c.vocabulary_counts(corp, **kwargs)
-            vocab = c.vocabulary(corp, select=select, tokens_as_hashes=tokens_as_hashes,
+            vocab = c.vocabulary(corp, select=select, by_attr=by_attr, tokens_as_hashes=tokens_as_hashes,
                                  force_unigrams=force_unigrams, sort=False)
 
             if as_table is False:
@@ -1007,7 +1027,7 @@ def test_vocabulary_counts(corpora_en_serial_and_parallel_module, select, propor
                         assert len(res) > 0
 
                     if not convert_uint64hashes and tokens_as_hashes:
-                        assert all([np.issubdtype(t.dtype, 'uint64') for t in res.keys()])
+                        assert all(t.dtype.kind == 'u' for t in res.keys())
                     else:
                         if tokens_as_hashes:
                             expect_type = int
@@ -1017,7 +1037,8 @@ def test_vocabulary_counts(corpora_en_serial_and_parallel_module, select, propor
                         assert all([isinstance(t, expect_type) for t in res.keys()])
 
                     if select != 'empty':
-                        corp_flat = c.corpus_tokens_flattened(corp, select=select, tokens_as_hashes=tokens_as_hashes)
+                        corp_flat = c.corpus_tokens_flattened(corp, select=select, by_attr=by_attr,
+                                                              tokens_as_hashes=tokens_as_hashes)
                         assert all(t in corp_flat for t in res.keys())
 
                     if proportions == 0:
@@ -1113,9 +1134,11 @@ def test_tokens_table_hypothesis(corpora_en_serial_and_parallel_module, **args):
 @settings(deadline=None)
 @given(select=st.sampled_from([None, 'empty', 'small2', 'nonexistent', ['small1', 'small2'], []]),
        sentences=st.booleans(),
+       by_attr=st.sampled_from([None, 'pos', 'lemma']),
        tokens_as_hashes=st.booleans(),
        as_array=st.booleans())
-def test_corpus_tokens_flattened(corpora_en_serial_and_parallel_module, select, sentences, tokens_as_hashes, as_array):
+def test_corpus_tokens_flattened(corpora_en_serial_and_parallel_module, select, sentences, by_attr, tokens_as_hashes,
+                                 as_array):
     def _check_tokens(tok, vocab):
         if as_array:
             assert isinstance(tok, np.ndarray)
@@ -1128,7 +1151,8 @@ def test_corpus_tokens_flattened(corpora_en_serial_and_parallel_module, select, 
 
         assert set(tok) <= vocab
 
-    kwargs = dict(select=select, sentences=sentences, tokens_as_hashes=tokens_as_hashes, as_array=as_array)
+    kwargs = dict(select=select, sentences=sentences, by_attr=by_attr, tokens_as_hashes=tokens_as_hashes,
+                  as_array=as_array)
     for corp in corpora_en_serial_and_parallel_module:
         if select == 'nonexistent' or (select not in (None, []) and len(corp) == 0):
             with pytest.raises(KeyError):
@@ -1138,7 +1162,7 @@ def test_corpus_tokens_flattened(corpora_en_serial_and_parallel_module, select, 
                 c.corpus_tokens_flattened(corp, **kwargs)
         else:
             res = c.corpus_tokens_flattened(corp, **kwargs)
-            vocab = c.vocabulary(corp, tokens_as_hashes=tokens_as_hashes, sort=False)
+            vocab = c.vocabulary(corp, by_attr=by_attr, tokens_as_hashes=tokens_as_hashes, sort=False)
 
             if sentences:
                 assert isinstance(res, list)
@@ -1216,7 +1240,6 @@ def test_corpus_unique_chars(corpora_en_serial_and_parallel_module, select):
                     assert res == {'.', 'T', 'a', 'c', 'd', 'e', 'h', 'i', 'l', 'm', 'n', 'o', 'p', 's', 't', 'u', 'x'}
 
 
-
 @settings(deadline=None)
 @given(select=st.sampled_from([None, 'empty', 'small2', 'nonexistent', ['small1', 'small2'], []]),
        threshold=st.one_of(st.none(), st.floats(allow_nan=False, allow_infinity=False)),
@@ -1224,7 +1247,7 @@ def test_corpus_unique_chars(corpora_en_serial_and_parallel_module, select):
        embed_tokens_min_docfreq=st.one_of(st.none(), st.integers(), st.floats(allow_nan=False, allow_infinity=False)),
        pass_embed_tokens=st.integers(min_value=0, max_value=3),
        statistic=st.sampled_from([tokenseq.pmi, tokenseq.npmi, tokenseq.pmi2, tokenseq.pmi3,
-                                  tokenseq.simple_collocation_counts]),
+                                  tokenseq.ppmi]),
        return_statistic=st.booleans(),
        rank=st.sampled_from([None, 'asc', 'desc']),
        as_table=st.booleans(),
@@ -1305,12 +1328,13 @@ def test_print_summary(capsys, corpora_en_serial_and_parallel_module):
 
 @settings(deadline=None)
 @given(select=st.sampled_from([None, 'empty', 'small2', 'nonexistent', ['small1', 'small2'], []]),
+       by_attr=st.sampled_from([None, 'pos', 'lemma']),
        as_table=st.booleans(),
        dtype=st.sampled_from([None, 'uint16', 'float64']),
        return_doc_labels=st.booleans(),
        return_vocab=st.booleans())
-def test_dtm(corpora_en_serial_and_parallel_module, select, as_table, dtype, return_doc_labels, return_vocab):
-    kwargs = dict(select=select, as_table=as_table, dtype=dtype,
+def test_dtm(corpora_en_serial_and_parallel_module, select, by_attr, as_table, dtype, return_doc_labels, return_vocab):
+    kwargs = dict(select=select, by_attr=by_attr, as_table=as_table, dtype=dtype,
                   return_doc_labels=return_doc_labels, return_vocab=return_vocab)
 
     for corp in corpora_en_serial_and_parallel_module:
@@ -1320,7 +1344,7 @@ def test_dtm(corpora_en_serial_and_parallel_module, select, as_table, dtype, ret
         else:
             res = c.dtm(corp, **kwargs)
 
-            expected_vocab = c.vocabulary(corp, select=select, sort=True)
+            expected_vocab = c.vocabulary(corp, select=select, by_attr=by_attr, sort=True)
             if select is None:
                 expected_labels = c.doc_labels(corp, sort=True)
             elif isinstance(select, str):
@@ -1360,7 +1384,7 @@ def test_dtm(corpora_en_serial_and_parallel_module, select, as_table, dtype, ret
                 assert dtm.index.tolist() == expected_labels
                 assert dtm.columns.tolist() == expected_vocab
 
-                if len(corp) > 0 and select is None:
+                if len(corp) > 0 and select is None and by_attr is None:
                     assert np.sum(dtm.iloc[expected_labels.index('empty'), :]) == 0
                     assert np.sum(dtm.iloc[:, expected_vocab.index('the')]) > 1
                     assert dtm.iloc[expected_labels.index('small1'), expected_vocab.index('the')] == 1
@@ -1368,7 +1392,7 @@ def test_dtm(corpora_en_serial_and_parallel_module, select, as_table, dtype, ret
                 assert isinstance(dtm, csr_matrix)
                 assert dtm.dtype == np.dtype(dtype or 'int32')
 
-                if len(corp) > 0 and select is None:
+                if len(corp) > 0 and select is None and by_attr is None:
                     assert np.sum(dtm[expected_labels.index('empty'), :]) == 0
                     assert np.sum(dtm[:, expected_vocab.index('the')]) > 1
                     assert dtm[expected_labels.index('small1'), expected_vocab.index('the')] == 1
@@ -1381,12 +1405,13 @@ def test_dtm(corpora_en_serial_and_parallel_module, select, as_table, dtype, ret
 
 @settings(deadline=None)
 @given(n=st.integers(-1, 5),
+       by_attr=st.sampled_from([None, 'pos', 'lemma']),
        join=st.booleans(),
        join_str=st.text(string.printable, max_size=1))
-def test_ngrams_hypothesis(corpora_en_serial_and_parallel_module, n, join, join_str):
+def test_ngrams_hypothesis(corpora_en_serial_and_parallel_module, n, by_attr, join, join_str):
     # note: proper ngram tests are done in test_tokenseq.py for token_ngrams
     for corp in corpora_en_serial_and_parallel_module:
-        args = dict(n=n, join=join, join_str=join_str)
+        args = dict(n=n, by_attr=by_attr, join=join, join_str=join_str)
 
         if n < 2:
             with pytest.raises(ValueError):
@@ -1396,7 +1421,7 @@ def test_ngrams_hypothesis(corpora_en_serial_and_parallel_module, n, join, join_
             assert isinstance(res, dict)
             assert set(corp.keys()) == set(res.keys())
 
-            corp_tokens = c.doc_tokens(corp)
+            corp_tokens = c.doc_tokens(corp, by_attr=by_attr)
 
             for lbl, ng in res.items():
                 dtok = corp_tokens[lbl]
@@ -1682,7 +1707,7 @@ def test_kwic_table_hypothesis(corpora_en_serial_and_parallel_module, **args):
                     assert contexts == list(range(len(dkwic)))
 
                 if len(dkwic) > 0:
-                    assert np.issubdtype(dkwic[matchattr], object)
+                    assert dkwic[matchattr].dtype.kind == 'O'
 
                     if args['glue'] is None:
                         assert np.all(0 <= dkwic['position'])
@@ -1707,6 +1732,273 @@ def test_kwic_table_hypothesis(corpora_en_serial_and_parallel_module, **args):
                                 assert all([x.count(args['highlight_keyword']) == 2 for x in dkwic[matchattr]])
 
 
+@settings(deadline=None)
+@given(
+    context_size=st.one_of(st.integers(-1, 5), st.tuples(st.integers(1, 5), st.integers(1, 5))),
+    tokens_given=st.integers(0, 5),
+    tokens_oov=st.booleans(),
+    select=st.sampled_from([None, 'empty', 'small2', 'nonexistent', ['small1', 'small2'], []]),
+    by_attr=st.sampled_from([None, 'pos', 'lemma']),
+    per_document=st.booleans(),
+    tokens_as_hashes=st.booleans(),
+    sparse_mat=st.booleans(),
+    triu=st.booleans(),
+    as_table=st.booleans(),
+    dtype=st.sampled_from(['int32', 'int64', 'uint16', 'float32']),
+    return_tokens=st.booleans(),
+    random_seed=st.integers(1, 5)
+)
+def test_token_cooccurrence_hypothesis(corpora_en_serial_and_parallel_module, **args):
+    oov_str = '__OOV__'
+    oov_hash = hash_string(oov_str)
+
+    tokens_given = args.pop('tokens_given')
+    tokens_oov = args.pop('tokens_oov')
+    random_seed = args.pop('random_seed')
+    tokens_as_hashes = args['tokens_as_hashes']
+    context_size = args['context_size']
+    per_document = args.pop('per_document')
+    attr = args['by_attr'] or 'token'
+
+    symm_context = isinstance(context_size, int) or context_size[0] == context_size[1]
+
+    for corp in corpora_en_serial_and_parallel_module:
+        csize = args['context_size']
+        if (isinstance(csize, int) and csize <= 0) or \
+                (isinstance(csize, tuple) and (any(x < 0 for x in csize) or all(x == 0 for x in csize))):
+            with pytest.raises(ValueError, match='^`context_size` must '):
+                c.token_cooccurrence(corp, tokens=['doesntmatter'], **args)
+        elif isinstance(csize, tuple) and csize[0] != csize[1] and args['triu']:
+            with pytest.raises(ValueError, match='^if the context size is not symmetric, '):
+                c.token_cooccurrence(corp, tokens=['doesntmatter'], **args)
+        elif args['select'] == 'nonexistent' or (args['select'] not in (None, []) and len(corp) == 0):
+            with pytest.raises(KeyError):
+                c.token_cooccurrence(corp, tokens=['doesntmatter'], **args)
+        else:
+            vocab = list(c.vocabulary(corp, select=args['select'], by_attr=attr, tokens_as_hashes=tokens_as_hashes,
+                                      sort=True))
+            vocab = [t for t in vocab if t not in {oov_str, oov_hash}]
+            oov_added = None
+
+            if tokens_given:
+                # randomly select tokens
+                k = min(tokens_given, len(vocab)-1)
+                if k > 0:
+                    random.seed(random_seed)
+                    tokens = random.sample(vocab, k=k)
+                else:
+                    tokens = []
+
+                if tokens_oov:
+                    corp.bimaps[args['by_attr'] or 'token'][oov_hash] = oov_str
+                    oov_added = oov_hash if tokens_as_hashes else oov_str
+                    tokens.append(oov_added)
+
+                tokens_contain_dupl = len(tokens) != len(set(tokens))
+            else:
+                # use full vocab as tokens
+                tokens = None
+                tokens_contain_dupl = False
+
+            if tokens_contain_dupl:
+                with pytest.raises(ValueError, match='^`tokens` shall not contain duplicate elements$'):
+                    c.token_cooccurrence(corp, tokens=tokens, **args)
+            else:
+                if per_document:
+                    args_combined = args.copy()
+                    args_combined.update(dict(return_tokens=False, sparse_mat=False, as_table=False))
+                    combined = c.token_cooccurrence(corp, tokens=tokens, **args_combined)
+                    res = c.token_cooccurrence(corp, tokens=tokens, per_document=True, **args)
+                else:
+                    combined = None
+                    res = c.token_cooccurrence(corp, tokens=tokens, **args)
+
+                # return type
+                if args['return_tokens']:
+                    assert isinstance(res, tuple)
+                    assert len(res) == 2
+                    assert isinstance(res[1], list)
+
+                returned_tokens = None
+
+                if per_document:
+                    if args['return_tokens']:
+                        res, returned_tokens = res
+
+                    assert isinstance(res, dict)
+                    if args['select'] is not None:
+                        assert {args['select']} if isinstance(args['select'], str) else set(args['select']) == \
+                                                                                        set(res.keys())
+                    else:
+                        assert set(corp.keys()) == set(res.keys())
+
+                    matrices_per_doc = [m.to_numpy() if args['as_table'] else
+                                        (m.todense() if args['sparse_mat'] and not args['as_table'] else m)
+                                        for m in res.values()]
+                    assert np.all(np.sum(np.array(matrices_per_doc), axis=0) == combined)
+
+                    if len(corp) == 0:
+                        assert res == {}
+                        cooc = None
+                    else:
+                        if (res and tokens is not None and len(tokens) > 0) or len(vocab) > 0:
+                            cooc = next(iter(res.values()))   # use first item only for rest of test
+                        else:
+                            cooc = None
+                else:
+                    if args['return_tokens']:
+                        cooc, returned_tokens = res
+                    else:
+                        cooc = res
+
+                del res
+
+                # returned tokens
+                if returned_tokens is not None:
+                    if tokens_given:
+                        assert returned_tokens == tokens
+                    else:
+                        assert returned_tokens == vocab
+
+                if cooc is None:
+                    continue
+
+                if not tokens_given:
+                    tokens = vocab
+
+                n_tok = len(tokens)
+
+                if args['as_table']:
+                    # check dataframe
+                    assert isinstance(cooc, pd.DataFrame)
+                    assert np.array_equal(cooc.index.values, cooc.columns.values)
+                    if returned_tokens is not None:
+                        assert cooc.index.values.tolist() == returned_tokens
+                    cooc = cooc.to_numpy()
+
+                # cooc. matrix type
+                if args['sparse_mat'] and not args['as_table']:
+                    assert sparse.issparse(cooc)
+                    cooc = cooc.todense()
+                else:
+                    assert isinstance(cooc, np.ndarray)
+
+                # dtype
+                if not (args['as_table'] and len(cooc) == 0):
+                    # pandas doesn't respect the dtype when creating an empty dataframe (it's always float64 in that
+                    # case)
+                    assert cooc.dtype.kind == args['dtype'][:1]
+
+                # shape
+                assert cooc.shape == (n_tok, n_tok)
+
+                if len(corp) == 0 and n_tok == 0:
+                    assert cooc.shape == (0, 0)
+
+                # symmetry when symmetric context size is given
+                if symm_context:
+                    if args['triu'] and n_tok > 1:  # lower triangle is not stored
+                        assert np.all(np.tril(cooc, -1) == 0)
+                        cooc += np.triu(cooc, 1).T  # make "full" matrix
+
+                    assert np.all(cooc == cooc.T)
+
+                # min/max
+                corpussize = c.corpus_num_tokens(corp, select=args['select'])
+                assert np.all(cooc >= 0)
+                assert np.all(cooc <= corpussize)
+
+                # OOV
+                if oov_added is not None:
+                    oov_idx = np.flatnonzero(np.array(tokens) == oov_added)[0]
+                    assert np.all(cooc[oov_idx, :] == 0)
+                    assert np.all(cooc[:, oov_idx] == 0)
+
+            # reset bimap and hence vocab
+            try:
+                del corp.bimaps[args['by_attr'] or 'token'][oov_hash]
+            except KeyError: pass
+
+
+@pytest.mark.parametrize('context_size, sparse_mat, triu', [
+    (1, False, False),
+    (1, False, True),
+    (1, True, False),
+    (1, True, True),
+    (2, False, False),
+    (2, False, True),
+    (2, True, False),
+    (2, True, True),
+    ((1, 2), False, False),
+    ((1, 2), True, False),
+])
+def test_token_cooccurrence_matrix_example(context_size, sparse_mat, triu):
+    docs = [
+        ['A', 'B', 'D', 'X', 'A', 'X', 'X'],
+        ['X', 'C', 'X', 'X', 'D'],
+        ['D', 'D', 'X', 'D', 'A', 'B'],
+        ['B'],
+        []
+    ]
+
+    if context_size == 1:
+        expected = np.array([
+            [0, 2, 0, 1, 2],
+            [2, 0, 0, 1, 0],
+            [0, 0, 0, 0, 2],
+            [1, 1, 0, 2, 4],
+            [2, 0, 2, 4, 4]], dtype='int32')
+    elif context_size == 2:
+        expected = np.array([
+            [0, 2, 0, 3, 4],
+            [2, 0, 0, 2, 1],
+            [0, 0, 0, 0, 3],
+            [3, 2, 0, 4, 6],
+            [4, 1, 3, 6, 8]], dtype='int32')
+    elif context_size == (1, 2):
+        expected = np.array([
+            [0, 2, 0, 2, 3],
+            [2, 0, 0, 1, 1],
+            [0, 0, 0, 0, 3],
+            [2, 2, 0, 3, 5],
+            [3, 0, 2, 5, 6]], dtype='int32')
+    else:
+        raise ValueError('invalid context_size for this test')
+
+    if isinstance(context_size, int):
+        context_size = (context_size, context_size)
+
+    for test_n_workers in range(5):
+        if test_n_workers > 0:  # test corpus func
+            corp = c.Corpus({str(i): ' '.join(d) for i, d in enumerate(docs)}, language='en',
+                            max_workers=test_n_workers)
+            cooc, tokens = c.token_cooccurrence(corp, context_size=context_size, sparse_mat=sparse_mat, triu=triu,
+                                                return_tokens=True)
+            assert tokens == c.vocabulary(corp)
+            expected_sparse_fmt = sparse.csr_matrix
+        else:  # test helper func
+            cooc = _token_cooccurrence_matrix(docs,
+                                              context_size=context_size,
+                                              tokens=sorted(set(flatten_list(docs))),
+                                              sparse_mat=sparse_mat,
+                                              tokens_cover_vocab=True,
+                                              triu=triu)
+            expected_sparse_fmt = sparse.dok_matrix
+
+        if sparse_mat:
+            assert isinstance(cooc, expected_sparse_fmt)
+            cooc = cooc.todense()
+        else:
+            assert isinstance(cooc, np.ndarray)
+
+        assert cooc.dtype.kind == 'i'
+
+        if triu:
+            assert np.all(cooc == np.triu(expected))
+        else:
+            assert np.all(cooc == expected)
+
+
 def test_save_load_corpus(corpora_en_serial_and_parallel_module):
     for corp in corpora_en_serial_and_parallel_module:
         with tempfile.TemporaryFile(suffix='.pickle') as ftemp:
@@ -1714,7 +2006,7 @@ def test_save_load_corpus(corpora_en_serial_and_parallel_module):
             ftemp.seek(0)
             unpickled_corp = c.load_corpus_from_picklefile(ftemp)
 
-            _check_copies(corp, unpickled_corp, same_nlp_instance=False)
+            _check_copies(corp, unpickled_corp, same_nlp_instance=False, same_workers_attrs=False)
 
 
 @settings(deadline=None)
@@ -1848,15 +2140,20 @@ def test_load_corpus_from_tokens_table(corpora_en_serial_and_parallel, with_orig
                 assert corp.nlp is not corp2.nlp
 
 
-@pytest.mark.parametrize('deepcopy_attrs', (False, True))
-def test_serialize_deserialize_corpus(corpora_en_serial_and_parallel_module, deepcopy_attrs):
+@pytest.mark.parametrize('deepcopy_attrs, store_workers_attrs', [
+    (False, False),
+    (False, True),
+    (True, False),
+    (True, True),
+])
+def test_serialize_deserialize_corpus(corpora_en_serial_and_parallel_module, deepcopy_attrs, store_workers_attrs):
     for corp in corpora_en_serial_and_parallel_module:
-        ser_corp = c.serialize_corpus(corp, deepcopy_attrs=deepcopy_attrs)
+        ser_corp = c.serialize_corpus(corp, deepcopy_attrs=deepcopy_attrs, store_workers_attrs=store_workers_attrs)
         assert isinstance(ser_corp, dict)
         corp2 = c.deserialize_corpus(ser_corp)
         assert isinstance(corp2, c.Corpus)
 
-        _check_copies(corp, corp2, same_nlp_instance=False)
+        _check_copies(corp, corp2, same_nlp_instance=False, same_workers_attrs=store_workers_attrs)
 
 
 @pytest.mark.parametrize('testtype, files, doc_label_fmt, inplace', [
@@ -2572,9 +2869,8 @@ def test_join_collocations_by_patterns(corpora_en_serial_and_parallel, testcase,
 def test_join_collocations_by_statistic_hypothesis(corpora_en_serial_and_parallel_module, threshold, glue, min_count,
                                                    embed_tokens_min_docfreq, pass_embed_tokens, test_w_tokenattr,
                                                    return_joint_tokens):
-    # restricting statistic to simple counts, otherwise the test takes too long
     args = dict(threshold=threshold, min_count=min_count, embed_tokens_min_docfreq=embed_tokens_min_docfreq,
-                glue=glue, statistic=tokenseq.simple_collocation_counts)
+                glue=glue, statistic=lambda x: x)
 
     for corp in corpora_en_serial_and_parallel_module:
         if pass_embed_tokens > 0:
@@ -3324,6 +3620,89 @@ def test_builtin_corpora_info(with_paths):
     assert set(corpnames) == set(c.Corpus._BUILTIN_CORPORA_LOAD_KWARGS.keys())
 
 
+#%% test helper functions
+
+
+@given(docs=st.one_of(strategy_lists_of_tokens(string.printable), strategy_lists_of_int_tokens(100, 110)),
+       context_size=st.tuples(st.integers(1, 5), st.integers(1, 5)),
+       tokens=st.one_of(st.none(), st.integers(0, 5)),  # either None or number of tokens to sample from vocab
+       tokens_oov=st.booleans(),    # if True, add an OOV token
+       sparse_mat=st.booleans(),
+       triu=st.booleans(),
+       dtype=st.sampled_from(['int32', 'int64', 'uint16', 'float32']))
+def test__token_cooccurrence_matrix(docs, context_size, tokens, tokens_oov, sparse_mat, triu, dtype):
+    flat_docs = flatten_list(docs)
+    vocab = set(flat_docs)
+    corpussize = len(flat_docs)
+    symm_context = isinstance(context_size, int) or context_size[0] == context_size[1]
+    oov_added = None
+
+    if tokens is None:
+        tokens = sorted(set(flat_docs))
+        tokens_cover_vocab = True
+    else:
+        tokens = list(vocab)
+        tokens_cover_vocab = False
+
+    if tokens:
+        if tokens_oov:
+            if isinstance(next(iter(tokens)), int):
+                oov_added = 0
+            elif 'OOV' not in tokens:
+                oov_added = 'OOV'
+
+            if oov_added is not None:
+                tokens.append(oov_added)
+
+    args = dict(docs=docs, context_size=context_size, tokens=tokens, sparse_mat=sparse_mat, triu=triu, dtype=dtype,
+                tokens_cover_vocab=tokens_cover_vocab)
+
+    if not symm_context and triu:
+        with pytest.raises(AssertionError):
+            _token_cooccurrence_matrix(**args)
+    else:
+        cooc = _token_cooccurrence_matrix(**args)
+
+        # matrix format (sparse/dense)
+        if sparse_mat:
+            assert isinstance(cooc, sparse.dok_matrix)
+            cooc = cooc.todense()
+        else:
+            assert isinstance(cooc, np.ndarray)
+
+        # matrix dtype
+        assert cooc.dtype.kind == dtype[:1]
+
+        # matrix shape
+        if corpussize == 0:
+            expected_n = 0
+        else:
+            if tokens is None:
+                expected_n = len(vocab)
+            else:
+                expected_n = len(tokens)
+
+        assert cooc.shape == (expected_n, expected_n)
+
+        # symmetry when symmetric context size is given
+        if symm_context:
+            if triu and expected_n > 1:   # lower triangle is not stored
+                assert np.all(np.tril(cooc, -1) == 0)
+                cooc += np.triu(cooc, 1).T   # make "full" matrix
+
+            assert np.all(cooc == cooc.T)
+
+        # min
+        assert np.all(cooc >= 0)
+
+        # OOV
+        if oov_added is not None:
+            oov_idx = np.flatnonzero(np.array(tokens) == oov_added)[0]
+            assert np.all(cooc[oov_idx, :] == 0)
+            assert np.all(cooc[:, oov_idx] == 0)
+
+
+
 #%% workflow examples tests
 
 
@@ -3418,7 +3797,7 @@ def _check_corpus_docs(corp: c.Corpus, has_sents: bool):
         assert d.bimaps is corp.bimaps
         assert isinstance(d.tokenmat, np.ndarray)
         assert d.tokenmat.ndim == 2
-        assert np.issubdtype(d.tokenmat.dtype, 'uint64')
+        assert d.tokenmat.dtype.kind == 'u'
         assert len(d) >= 0
         assert len(d) == len(d.tokenmat)
         assert isinstance(d.tokenmat_attrs, list)
@@ -3431,8 +3810,8 @@ def _check_corpus_docs(corp: c.Corpus, has_sents: bool):
         assert len(tok) == len(d)
 
 
-def _check_copies(corp_a, corp_b, same_nlp_instance):
-    _check_copies_attrs(corp_a, corp_b, same_nlp_instance=same_nlp_instance)
+def _check_copies(corp_a, corp_b, same_nlp_instance, same_workers_attrs=True):
+    _check_copies_attrs(corp_a, corp_b, same_nlp_instance=same_nlp_instance, same_workers_attrs=same_workers_attrs)
 
     # check if tokens are the same
     tok_a = c.doc_tokens(corp_a)
@@ -3443,7 +3822,8 @@ def _check_copies(corp_a, corp_b, same_nlp_instance):
     assert _dataframes_equal(c.tokens_table(corp_a), c.tokens_table(corp_b))
 
 
-def _check_copies_attrs(corp_a, corp_b, check_attrs=None, dont_check_attrs=None, same_nlp_instance=True):
+def _check_copies_attrs(corp_a, corp_b, check_attrs=None, dont_check_attrs=None,
+                        same_nlp_instance=True, same_workers_attrs=True):
     attrs_a = dir(corp_a)
     attrs_b = dir(corp_b)
 
@@ -3451,7 +3831,10 @@ def _check_copies_attrs(corp_a, corp_b, check_attrs=None, dont_check_attrs=None,
     if check_attrs is None:
         check_attrs = {'uses_unigrams', 'token_attrs', 'custom_token_attrs_defaults', 'doc_attrs',
                        'doc_attrs_defaults', 'ngrams', 'ngrams_join_str', 'language', 'language_model',
-                       'doc_labels', 'n_docs', 'workers_docs', 'max_workers', 'raw_preproc'}
+                       'doc_labels', 'n_docs', 'raw_preproc'}
+
+    if same_workers_attrs:
+        check_attrs.update({'max_workers', 'workers_timeout', 'workers_docs'})
 
     if dont_check_attrs is not None:
         check_attrs.difference_update(dont_check_attrs)

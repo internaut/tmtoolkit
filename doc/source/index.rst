@@ -17,9 +17,11 @@
    preprocessing
    bow
    topic_modeling
+   rinterop
    api
    development
    version_history
+   references
 
 Indices and tables
 ==================

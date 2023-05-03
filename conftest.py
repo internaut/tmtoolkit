@@ -1,7 +1,7 @@
 """
 Configuration for tests with pytest
 
-.. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
+.. codeauthor:: Markus Konrad <post@mkonrad.net>
 """
 
 from hypothesis import settings, HealthCheck

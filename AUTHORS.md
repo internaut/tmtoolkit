@@ -2,7 +2,7 @@
 
 ## Maintainer / main developer
 
-[Markus Konrad](https://github.com/internaut) @ [WZB](https://github.com/WZBSocialScienceCenter/)
+[Markus Konrad](https://github.com/internaut)
 
 ## Contributors
 

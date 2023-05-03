@@ -4,7 +4,7 @@ Metrics for topic model evaluation.
 In order to run model evaluations in parallel use one of the modules :mod:`~tmtoolkit.topicmod.tm_gensim`,
 :mod:`~tmtoolkit.topicmod.tm_lda` or :mod:`~tmtoolkit.topicmod.tm_sklearn`.
 
-.. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
+.. codeauthor:: Markus Konrad <post@mkonrad.net>
 """
 
 import numpy as np
@@ -38,9 +38,6 @@ def metric_held_out_documents_wallach09(dtm_test, theta_test, phi_train, alpha, 
 
     .. note:: Requires `gmpy2 <https://github.com/aleaxit/gmpy>`_ package for multiple-precision arithmetic to avoid
               numerical underflow.
-
-    .. [Wallach2009] Wallach, H.M., Murray, I., Salakhutdinov, R. and Mimno, D., 2009. Evaluation methods for
-                     topic models.
 
     :param dtm_test: held-out documents of shape NxM with N documents and vocabulary size M
     :param theta_test: document-topic estimation of `dtm_test`; shape NxK with K topics
@@ -141,10 +138,6 @@ def metric_cao_juan_2009(topic_word_distrib):
     """
     Calculate metric as in [Cao2009]_ using topic-word distribution `topic_word_distrib`.
 
-    .. [Cao2009] Cao Juan, Xia Tian, Li Jintao, Zhang Yongdong, and Tang Sheng. 2009. A density-based method for
-                 adaptive LDA model selection. Neurocomputing — 16th European Symposium on Artificial Neural Networks
-                 2008 72, 7–9: 1775–1781. <http://doi.org/10.1016/j.neucom.2008.06.011>.
-
     :param topic_word_distrib: topic-word distribution; shape KxM, where K is number of topics, M is vocabulary size
     :return: calculated metric
     """
@@ -165,11 +158,6 @@ def metric_arun_2010(topic_word_distrib, doc_topic_distrib, doc_lengths):
     .. warning:: There's no code available for the [Arun2010]_ paper. The code follows the procedures outlined in the
                  paper so that its results could be reproduced for the NIPS dataset. See the discussion at
                  https://github.com/nikita-moor/ldatuning/issues/7.
-
-    .. [Arun2010] Rajkumar Arun, V. Suresh, C. E. Veni Madhavan, and M. N. Narasimha Murthy. 2010. On finding the
-                  natural number of topics with latent dirichlet allocation: Some observations. In Advances in knowledge
-                  discovery and data mining, Mohammed J. Zaki, Jeffrey Xu Yu, Balaraman Ravindran and Vikram Pudi
-                  (eds.). Springer Berlin Heidelberg, 391–402. http://doi.org/10.1007/978-3-642-13657-3_43.
 
     :param topic_word_distrib: topic-word distribution; shape KxM, where K is number of topics, M is vocabulary size
     :param doc_topic_distrib: document-topic distribution; shape NxK, where N is the number of documents
@@ -199,10 +187,6 @@ def metric_griffiths_2004(logliks):
 
     Calculates the harmonic mean of the log-likelihood values `logliks`. Burn-in values
     should already be removed from `logliks`.
-
-    .. [GriffithsSteyvers2004] Thomas L. Griffiths and Mark Steyvers. 2004. Finding scientific topics. Proceedings of
-                               the National Academy of Sciences 101, suppl 1: 5228–5235.
-                               http://doi.org/10.1073/pnas.0307752101
 
     .. note:: Requires `gmpy2 <https://github.com/aleaxit/gmpy>`_ package for multiple-precision arithmetic to avoid
               numerical underflow.
@@ -236,9 +220,6 @@ def metric_coherence_mimno_2011(topic_word_distrib, dtm, top_n=20, eps=1, includ
 
     By default, it will return a NumPy array of coherence values per topic (same ordering as in `topic_word_distrib`).
     Set `return_mean` to True to return the mean of all topics instead.
-
-    .. [Mimno2011] D. Mimno, H. Wallach, E. Talley, M. Leenders, A. McCullum 2011: Optimizing semantic coherence in
-                   topic models
 
     :param topic_word_distrib: topic-word distribution; shape KxM, where K is number of topics, M is vocabulary size
     :param dtm: document-term matrix of shape NxM with N documents and vocabulary size M
@@ -357,7 +338,7 @@ def metric_coherence_gensim(measure, topic_word_distrib=None, gensim_model=None,
     try:
         import gensim
     except ImportError:
-        raise ValueError('package `gensim` must be installed for `coherence_gensim` metric')
+        raise RuntimeError('package `gensim` must be installed for `coherence_gensim` metric')
 
     if measure == 'u_mass' and dtm is None and gensim_corpus is None:
         raise ValueError('document-term-matrix `dtm` or Gensim corpus `gensim_corpus` must be provided for measure '
