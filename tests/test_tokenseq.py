@@ -584,7 +584,7 @@ def test_token_collocations_hypothesis(sentences, threshold, min_count, pass_emb
                 assert isinstance(row, tuple)
                 assert len(row) == 2
                 colloc, stat = row
-                assert isinstance(stat, (float, int))
+                assert isinstance(stat, (float, int, np.uint32, np.uint64))
                 if threshold:
                     assert stat >= threshold
                 if statistic is identity:
