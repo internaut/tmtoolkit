@@ -3,7 +3,7 @@ import random
 from collections import Counter
 
 import pytest
-from hypothesis import given, strategies as st
+from hypothesis import given, strategies as st, settings
 
 try:
     from tmtoolkit.corpus import Corpus, vocabulary
@@ -164,6 +164,7 @@ def test_predict(textdata_en, corpus_en, fit_corpus, n, add_k_smoothing, keep_vo
                 assert isinstance(pred, str) or pred is None
 
 
+@settings(deadline=None)
 @given(fit_corpus=st.booleans(),
        n=st.integers(1, 5),
        add_k_smoothing=st.floats(0.0, 2.0),

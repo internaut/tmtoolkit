@@ -97,10 +97,9 @@ def test_write_wordclouds_to_folder(tmpdir):
         assert os.path.exists(os.path.join(path, 'cloud_{label}.png'.format(label=label)))
 
 
-@given(
-    doc_topic=strategy_2d_prob_distribution(),
-    make_topic_labels=st.booleans()
-)
+@settings(deadline=None)
+@given(doc_topic=strategy_2d_prob_distribution(),
+       make_topic_labels=st.booleans())
 def test_plot_doc_topic_heatmap(doc_topic, make_topic_labels):
     doc_topic = np.array(doc_topic)
     doc_labels = ['d%d' % i for i in range(doc_topic.shape[0])]

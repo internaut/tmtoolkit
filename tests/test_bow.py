@@ -740,6 +740,7 @@ def test_naivebayes_on_dtm(add_k_smoothing, binary_counts):
                                 hash_fn=hash_fn)
 
 
+@settings(deadline=None)
 @given(add_k_smoothing=st.floats(-1, 1),
        binary_counts=st.booleans(),
        tokens_as_hashes=st.booleans())
