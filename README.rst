@@ -150,6 +150,6 @@ See `LICENSE <https://github.com/internaut/tmtoolkit/blob/master/LICENSE>`_ file
     :target: https://tmtoolkit.readthedocs.io/en/latest/?badge=latest
     :alt: Documentation Status
 
-.. |zenodo| image:: https://zenodo.org/badge/109812180.svg
-    :target: https://zenodo.org/badge/latestdoi/109812180
+.. |zenodo| image:: https://zenodo.org/badge/DOI/10.5281/zenodo.7895339.svg
+    :target: https://doi.org/10.5281/zenodo.7895339
     :alt: Citable Zenodo DOI
